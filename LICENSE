@@ -1,6 +1,12 @@
 MIT License
 
-Copyright (c) 2026 DeepSeek
+Original work: Copyright (c) 2026 DeepSeek
+Modifications: Copyright (c) 2026 兮夏
+
+This software is derived from the auto-review plugin of
+deepseek-ai/deepseek-harness (packages/experimental/auto-review),
+originally licensed under the MIT License. The complete text of the
+original license is included below.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

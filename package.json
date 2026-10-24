@@ -1,13 +1,7 @@
 {
-  "name": "@deepseek-ai/dsh-experimental-auto-review",
-  "description": "Per-tool LLM authorization review for the DeepSeek Harness Auto permission preset",
-  "version": "0.2.1-rc.3",
-  "icon": "./icon.svg",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
-    "directory": "packages/experimental/auto-review"
-  },
+  "name": "dsh--auto-review-systemOne",
+  "description": "DSH 自动审查模式：在每一次工具以 Full access 执行前使用 SystemOne 模型来自动审查。",
+  "version": "0.0.1",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -22,7 +16,6 @@
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
-    "icon.svg",
     "locale/*.json",
     "docs",
     "lib/index.js",
