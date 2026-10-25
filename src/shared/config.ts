@@ -1,0 +1,116 @@
+/**
+ * 配置形态的跨半共享定义：字段键、默认值、预设候选与固定常量。
+ *
+ * 只放纯数据与纯函数，不导入宿主包，故 Node 半与浏览器半共用同一份取值。
+ *
+ * @module dsh-auto-review-systemOne/shared/config
+ */
+
+/** 配置命名空间：等于 patch 条目 id。 */
+export const CONFIG_NS = 'auto-review-systemOne'
+
+/** 插件名（npm 包名）。 */
+export const PLUGIN_NAME = 'dsh-auto-review-systemOne'
+
+/** 凭据引用名：写死而非配置项，值走宿主凭据管理。 */
+export const CREDENTIAL_REF = 'TIKAFLOW_SYSTEMONE_API_KEY'
+
+/** 置信度阈值下限。 */
+export const MIN_CONFIDENCE_THRESHOLD = 0.6
+
+/** 置信度阈值上限：再高则判定几乎必然失败。 */
+export const MAX_CONFIDENCE_THRESHOLD = 0.99
+
+/** 置信度阈值默认值。 */
+export const DEFAULT_CONFIDENCE_THRESHOLD = 0.85
+
+/** 请求超时（毫秒）。 */
+export const REVIEW_TIMEOUT_MS = 30_000
+
+/** 连续失败降级阈值。 */
+export const FALLBACK_FAILURE_THRESHOLD = 10
+
+/** 评分题档位数。 */
+export const SCORE_LEVELS = 5
+
+/** 安全侧累积概率的起点档位。 */
+export const SAFE_LEVEL_START = 2
+/** 两个「去向」配置项共用的候选，与宿主「设置 → 通用设置 → 权限」同源。 */
+export const PRESET_OPTIONS = ['read-only', 'workspace-write', 'danger-full-access'] as const
+
+/** 配置字段键。 */
+export const CONFIG_KEYS = [
+    'baseURL',
+    'model',
+    'confidenceThreshold',
+    'onSessionReset',
+    'onApiUnavailable',
+    'notifyOnFallback',
+] as const
+
+/** 一个配置字段键。 */
+export type ConfigKey = (typeof CONFIG_KEYS)[number]
+
+/** 解析后的审查配置。 */
+export interface ReviewConfig {
+    /** 端点基址，不含 `/systemone`。 */
+    readonly baseURL: string
+    /** 决策模型标识；自建单模型服务可留空。 */
+    readonly model: string
+    /** 所有问题的基准阈值。 */
+    readonly confidenceThreshold: number
+    /** 插件卸载或会话重置时的去向。 */
+    readonly onSessionReset: string
+    /** 连续失败降级后的去向。 */
+    readonly onApiUnavailable: string
+    /** 降级时是否提示用户。 */
+    readonly notifyOnFallback: boolean
+}
+
+/** 缺省配置。 */
+export const DEFAULT_CONFIG: ReviewConfig = {
+    baseURL: '',
+    model: '',
+    confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
+    onSessionReset: 'workspace-write',
+    onApiUnavailable: 'workspace-write',
+    notifyOnFallback: true,
+}
+
+/** 字段键的中文名。 */
+export const CONFIG_LABELS: Readonly<Record<ConfigKey, string>> = {
+    baseURL: 'API 地址',
+    model: '模型 ID',
+    confidenceThreshold: '置信度阈值',
+    onSessionReset: '会话重置时的权限模式',
+    onApiUnavailable: '接口不可用时的权限模式',
+    notifyOnFallback: '降级时提示用户',
+}
+
+/**
+ * 拼出决策端点：配置只填基址，`/systemone` 由代码追加。
+ * @param baseURL - 已校验的基址。
+ * @returns 决策端点 URL。
+ */
+export function decisionEndpoint(baseURL: string): string {
+    return `${baseURL.replace(/\/+$/u, '')}/systemone`
+}
+
+/**
+ * 校验端点基址。
+ * @param value - 配置里的基址。
+ * @returns 不合法原因，合法时返回 undefined。
+ */
+export function baseURLProblem(value: string): string | undefined {
+    if (value === '') return undefined
+    let url: URL
+    try {
+        url = new URL(value)
+    } catch {
+        return '不是合法的 URL'
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '协议必须是 http 或 https'
+    if (url.search !== '' || url.hash !== '') return '不应带查询串或片段'
+    if (/\/systemone\/?$/u.test(url.pathname)) return '不应包含 /systemone，代码会自动追加'
+    return undefined
+}
