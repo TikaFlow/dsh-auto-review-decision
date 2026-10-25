@@ -51,14 +51,13 @@ export function applyLifecycle(ctx: Context): void {
                 if (isAborted(lifecycle.signal)) return { kind: 'cancel' }
                 if (!review.ok) return failed(exec, review.error)
                 const { decision } = review
-                // 权限所有者会向每个已发布会话钉入审批策略。
-                if (decision.decision === 'deny' && ctx.approval.overrideOf(agent.session) === 'never') {
-                    return denied(exec, decision.reason)
-                }
+                const reason = 'reason' in decision ? decision.reason : undefined
+                // 结论自带落地方式：deny 是原则问题，不询问用户，也不执行调用体。
+                if (decision.decision === 'deny') return denied(exec, reason)
                 const downstream = await next()
                 if (isAborted(lifecycle.signal)) return { kind: 'cancel' }
                 if (decision.decision === 'allow' || downstream.kind !== 'allow') return downstream
-                return askUser(exec, decision.reason)
+                return askUser(exec, reason)
             } finally {
                 active.delete(completed.promise)
                 completed.resolve()

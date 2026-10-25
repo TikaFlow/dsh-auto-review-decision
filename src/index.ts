@@ -21,8 +21,10 @@ export { Config } from './config.ts'
 
 /** 安装 Auto 预设与其审查闸门；应用关闭时保留会话选择。 */
 export function apply(ctx: Context, config?: ConfigInput): void {
-    // 加载期校验：非法值立即报错并指明配置项。
+    // 接入配置项
     readReviewConfig(config)
     setConfigInput(() => config)
+
+    // 核心生命周期：注册 auto 预设，并审查工具调用
     applyLifecycle(ctx)
 }
