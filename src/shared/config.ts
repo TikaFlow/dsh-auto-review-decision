@@ -35,7 +35,8 @@ export const SCORE_LEVELS = 5
 
 /** 安全侧累积概率的起点档位。 */
 export const SAFE_LEVEL_START = 2
-/** 两个「去向」配置项共用的候选，与宿主「设置 → 通用设置 → 权限」同源。 */
+
+/** 两个「去向」配置项共用的候选。 */
 export const PRESET_OPTIONS = ['read-only', 'workspace-write', 'danger-full-access'] as const
 
 /** 配置字段键。 */
@@ -55,7 +56,7 @@ export type ConfigKey = (typeof CONFIG_KEYS)[number]
 export interface ReviewConfig {
     /** 端点基址，不含 `/systemone`。 */
     readonly baseURL: string
-    /** 决策模型标识；自建单模型服务可留空。 */
+    /** 决策模型标识。 */
     readonly model: string
     /** 所有问题的基准阈值。 */
     readonly confidenceThreshold: number
