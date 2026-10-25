@@ -36,6 +36,12 @@ export const SCORE_LEVELS = 5
 /** 安全侧累积概率的起点档位。 */
 export const SAFE_LEVEL_START = 2
 
+/** 高安全档位的起点档位：3 与 4 视为「明确安全」。 */
+export const HIGH_LEVEL_START = 3
+
+/** 明确安全档（P(3)+P(4)）在安全侧中的最低占比。 */
+export const MIN_HIGH_RATIO = 0.6
+
 /** 两个「去向」配置项共用的候选。 */
 export const PRESET_OPTIONS = ['read-only', 'workspace-write', 'danger-full-access'] as const
 

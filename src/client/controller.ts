@@ -120,9 +120,7 @@ interface CredentialState {
     readonly writable: boolean
 }
 
-/**
- * 把配置表单与凭据状态编排成卡片状态。
- */
+/** 把配置表单与凭据状态编排成卡片状态。 */
 export class CardController {
     private readonly form: SettingsFormModel<Record<string, unknown>>
     private readonly store: SnapshotStore<CardState>

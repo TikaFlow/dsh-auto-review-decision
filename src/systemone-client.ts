@@ -14,9 +14,7 @@ import type {
     SystemOneErrorResponse,
 } from './systemone.ts'
 
-/**
- * 一次调用失败的归类：取值即机器可读的类别，修正项由 {@link FAILURE_FIX} 给出。
- */
+/** 一次调用失败的归类：取值即机器可读的类别，修正项由 {@link FAILURE_FIX} 给出。 */
 export const FAILURE = {
     /** 凭据未配置。 */
     credential: 'credential',
