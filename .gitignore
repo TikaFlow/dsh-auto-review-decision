@@ -1,0 +1,23 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建产物（由 pnpm run build 生成，发布时由 package.json 的 files 白名单收录）
+lib/
+*.tsbuildinfo
+
+# 测试与覆盖率产物
+coverage/
+
+# 编辑器与操作系统
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 日志与本地环境
+*.log
+.env
+.env.*
+!.env.example

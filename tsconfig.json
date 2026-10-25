@@ -1,54 +1,16 @@
 {
-  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "lib/types"
+    "target": "es2024",
+    "lib": ["es2024"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "noEmit": true,
+    "types": ["node"]
   },
-  "include": [
-    "src"
-  ],
-  "references": [
-    {
-      "path": "../../../vendor/cosmokit"
-    },
-    {
-      "path": "../../../vendor/cordis"
-    },
-    {
-      "path": "../../core/agent"
-    },
-    {
-      "path": "../../context/agent-instructions"
-    },
-    {
-      "path": "../../compaction/compaction"
-    },
-    {
-      "path": "../../llm/llm"
-    },
-    {
-      "path": "../../core/session"
-    },
-    {
-      "path": "../../subagent/subagent"
-    },
-    {
-      "path": "../../interaction/permission-presets"
-    },
-    {
-      "path": "../../core/tools"
-    },
-    {
-      "path": "../../interaction/user-approval"
-    },
-    {
-      "path": "../../util/values"
-    },
-    {
-      "path": "../../session/working-directory"
-    },
-    {
-      "path": "../../core/tool-executor-ptc"
-    }
-  ]
+  "include": ["src"]
 }
