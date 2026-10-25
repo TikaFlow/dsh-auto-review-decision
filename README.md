@@ -3,7 +3,7 @@ description: "DSH 自动审查模式：在每一次工具以 Full access 执行�
 kind: "package-bundle"
 ---
 
-# dsh--auto-review-systemOne
+# dsh-auto-review-systemOne
 
 ## 概述
 
