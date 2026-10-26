@@ -5,10 +5,11 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-agent-instructions'
-import type {} from '@deepseek-ai/dsh-subagent'
-import type {} from '@deepseek-ai/dsh-working-directory'
+import type { } from '@deepseek-ai/dsh-agent-instructions'
+import type { } from '@deepseek-ai/dsh-subagent'
+import type { } from '@deepseek-ai/dsh-working-directory'
 import { readReviewConfig, setConfigInput, type ConfigInput } from './config.ts'
+import { applyFallback } from './fallback.ts'
 import { applyLifecycle } from './lifecycle.ts'
 
 /** Cordis 插件名，供加载器诊断使用。 */
@@ -23,6 +24,9 @@ export function apply(ctx: Context, config?: ConfigInput): void {
     // 接入配置项
     readReviewConfig(config)
     setConfigInput(() => config)
+
+    // 降级设施：计数守卫、提示路由与 Auto 重选清零；卸载随本插件上下文回收
+    applyFallback(ctx)
 
     // 核心生命周期：注册 auto 预设，并审查工具调用
     applyLifecycle(ctx)

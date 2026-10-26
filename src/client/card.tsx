@@ -1,5 +1,5 @@
 /**
- * 配置卡片：复刻宿主插件卡的可折叠外壳，正文为连接与降级两组设置。
+ * 配置卡片：复刻宿主插件卡的可折叠外壳，正文为连接、判定与降级三组设置。
  *
  * @module dsh-auto-review-systemOne/client/card
  */
@@ -11,6 +11,7 @@ import type { PropsHooks } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CardFace } from './controller.ts'
 import { ensureStyles } from './styles.ts'
 import type { CardLocaleKey } from './locale.ts'
+import { presetName } from './preset-labels.ts'
 import { PRESET_OPTIONS } from '../shared/config.ts'
 
 const {
@@ -25,13 +26,6 @@ export type CardProps = Omit<CardFace, 'hooks'> & PropsHooks<CardFace['hooks']> 
     readonly defaultOpen?: boolean
 }
 
-/** 预设机器值 → 文案键。 */
-const PRESET_LABELS: Readonly<Record<string, CardLocaleKey>> = {
-    'read-only': 'presetReadOnly',
-    'workspace-write': 'presetWorkspaceWrite',
-    'danger-full-access': 'presetFullAccess',
-}
-
 /** 预设选择行。 */
 function PresetRow(props: {
     readonly label: string
@@ -41,10 +35,7 @@ function PresetRow(props: {
     readonly t: (key: CardLocaleKey) => string
 }): JSX.Element {
     const [open, setOpen] = useState(false)
-    const labelOf = (value: string): string => {
-        const key = PRESET_LABELS[value]
-        return key === undefined ? value : props.t(key)
-    }
+    const labelOf = (value: string): string => presetName(value, props.t)
     return (
         <div className="dsh-ar-row">
             <div className="dsh-ar-rowText">

@@ -15,6 +15,12 @@ export const PLUGIN_NAME = 'dsh-auto-review-systemOne'
 /** 凭据引用名：写死而非配置项，值走宿主凭据管理。 */
 export const CREDENTIAL_REF = 'TIKAFLOW_SYSTEMONE_API_KEY'
 
+/** 降级提示的推送路由（落在 `/api` 之下）。 */
+export const NOTICE_ROUTE = `/api/${CONFIG_NS}/notice`
+
+/** 同一路由的文档相对形式，供浏览器半直接使用。 */
+export const NOTICE_URL = NOTICE_ROUTE.slice(1)
+
 /** 审查请求保留的最近历史条目数。 */
 export const HISTORY_WINDOW = 128
 

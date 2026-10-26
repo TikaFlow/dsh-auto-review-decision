@@ -8,13 +8,14 @@
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import type { } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { } from '@deepseek-ai/dsh-client-locale/client'
+import type { } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { Card } from './card.tsx'
 import { CardController, type CardFace } from './controller.ts'
+import { applyFallbackNotice } from './fallback-notice.tsx'
 import { dictionaries, type CardLocaleKey } from './locale.ts'
 import { CONFIG_NS, PLUGIN_NAME } from '../shared/config.ts'
 
@@ -38,6 +39,7 @@ type CardSlotProps = ComposedProps<'plugins.bundle.config', string, never, undef
 export function apply(ctx: ClientContext): void {
     ctx.inject(['remote', 'remote.credentials', 'configForms'], (child) => {
         boot(child)
+        child.effect(() => applyFallbackNotice(child), 'auto-review: fallback notice')
     })
 }
 

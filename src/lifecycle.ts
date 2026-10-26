@@ -9,8 +9,10 @@ import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { RUN_CODE_NAME, type PreToolDecision } from '@deepseek-ai/dsh-tools'
 import type { ShownSchemas } from './types.ts'
+import { getReviewConfig } from './config.ts'
 import { isAborted } from './log.ts'
 import { classifyRisk } from './reviewer.ts'
+import { exitAutoSessions } from './session-exit.ts'
 import { askUser, denied, failed } from './verdict.ts'
 
 /** 安装 Auto 预设与其审查闸门；应用关闭时保留会话选择。 */
@@ -72,10 +74,7 @@ export function applyLifecycle(ctx: Context): void {
             try {
                 // 根上下文卸载先于子级清理开始；只有插件被运行时移除才会改变会话策略。
                 if (ctx.root.fiber.state === FiberState.ACTIVE) {
-                    for (const session of ctx.sessions.list()) {
-                        if (permissionPresets.current(session) !== AUTO_PRESET) continue
-                        permissionPresets.set(session, 'danger-full-access')
-                    }
+                    exitAutoSessions(ctx, getReviewConfig().values.onSessionReset)
                 }
             } finally {
                 lifecycle.abort(new Error('auto-review integration disposed'))
