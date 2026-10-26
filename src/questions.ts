@@ -21,10 +21,7 @@ export type ReviewVerdict =
     | { readonly kind: 'deny'; readonly reason: string }
     | { readonly kind: 'ask'; readonly reason: string }
 
-/** 不可商量问题拒绝理由的固定补充说明。 */
-const PRINCIPLE = '这是原则问题，不可绕过'
-
-/** 构造本插件的问题表：1 个 noul + 9 个 score。 */
+/** 构造本插件的问题表 */
 export function decisionQuestions(): SystemOneQuestions {
     return {
         [DECISION_QUESTION_ID]: { type: 'noul', instructions: DECISION_INSTRUCTIONS },
@@ -93,7 +90,7 @@ export function judge(response: SystemOneResponse, threshold: number): ReviewVer
     const noul = decision?.noul
     const probability = typeof noul === 'number' && Number.isFinite(noul) ? noul : 0
     if (probability < threshold) {
-        return { kind: 'deny', reason: `决定未通过：${PRINCIPLE}` }
+        return { kind: 'deny', reason: '该调用未通过安全审查' }
     }
 
     for (const id of SCORE_QUESTION_IDS) {
@@ -113,7 +110,7 @@ export function judge(response: SystemOneResponse, threshold: number): ReviewVer
             : `${label}未达标`
         const estimate = estimated ? '，安全度按期望档位估算' : ''
         if (isNonNegotiable(id)) {
-            return { kind: 'deny', reason: `${detail}${estimate}：${PRINCIPLE}` }
+            return { kind: 'deny', reason: `${detail}${estimate}` }
         }
         return { kind: 'ask', reason: `${detail}${estimate}，需要你决定` }
     }

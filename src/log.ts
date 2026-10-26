@@ -5,6 +5,7 @@
  */
 
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
+import { isRecord } from './shared/tools.ts'
 
 /** 返回某个不可变日志值的 JSON 文本。 */
 export function json(value: unknown): string {
@@ -27,11 +28,6 @@ export function parseLoggedArguments(raw: string): unknown {
 /** 比较两个无损 JSON 值，且不保留别名。 */
 export function sameJson(left: unknown, right: unknown): boolean {
     return JSON.stringify(left) === JSON.stringify(right)
-}
-
-/** 判断一个已记录的 JSON 值是否为对象记录，而非 null 或数组。 */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 /** 校验待审动作日志中必须具备的 schema 字段。 */

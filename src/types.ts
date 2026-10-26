@@ -7,12 +7,6 @@
 import type { ContentBlock, MessageSource } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
-/** 审查者解析出的风险分级与决策。 */
-export type AutoReviewDecision =
-    | { readonly risk: 'low'; readonly decision: 'allow' }
-    | { readonly risk: 'medium'; readonly decision: 'allow' }
-    | { readonly risk: 'medium' | 'high'; readonly decision: 'deny'; readonly reason?: string }
-
 /** 一条保留历史条目所携带的来源权威性角色。 */
 export type ReviewSourceRole =
     | 'user-instruction'
@@ -62,8 +56,6 @@ export type ShownSchemas = Map<string, HistoricalToolSchema>
 
 /** 供审查者使用的一份冻结输入。 */
 export interface ReviewSnapshot {
-    readonly provider: string
-    readonly model: string
     readonly cwd: string
     /** 按会话顺序排列的保留条目，最后一条是待审调用。 */
     readonly history: readonly HistoricalEntry[]

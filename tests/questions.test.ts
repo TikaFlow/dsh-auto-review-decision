@@ -27,7 +27,7 @@ function response(noul: number, scores: Record<string, unknown>): SystemOneRespo
 /** 全达标：每个 score 落在最高档。 */
 const ALL_PASS = Object.fromEntries(SCORE_QUESTION_IDS.map(id => [id, score(4, { '4': 1 })]))
 
-test('问题表为 1 个 noul + 9 个 score，顺序与定义一致', () => {
+test('问题表为 1 个 noul + 10 个 score，顺序与定义一致', () => {
     const questions = decisionQuestions()
     assert.equal(questions[DECISION_QUESTION_ID].type, 'noul')
     const ids = Object.keys(questions).filter(id => id !== DECISION_QUESTION_ID)
@@ -54,20 +54,16 @@ test('全部通过则放行', () => {
     assert.deepEqual(verdict as unknown, { kind: 'allow' })
 })
 
-test('noul 未达阈值则拒绝，理由为决定未通过', () => {
+test('noul 未达阈值则拒绝', () => {
     const verdict = judge(response(0.84, ALL_PASS), THRESHOLD)
     assert.equal(verdict.kind, 'deny')
-    assert.ok((verdict as { reason: string }).reason.includes('决定未通过'))
-    assert.ok((verdict as { reason: string }).reason.includes('原则问题'))
+    assert.ok((verdict as { reason: string }).reason.includes('未通过安全审查'))
 })
 
-test('不可商量未达标则拒绝，且标明不可绕过', () => {
+test('不可商量未达标则拒绝', () => {
     const verdict = judge(response(0.95, { ...ALL_PASS, malice: score(0, { '0': 1 }) }), THRESHOLD)
     assert.equal(verdict.kind, 'deny')
-    const reason = (verdict as { reason: string }).reason
-    assert.ok(reason.includes('恶意意图'))
-    assert.ok(reason.includes('原则问题'))
-    assert.ok(reason.includes('不可绕过'))
+    assert.ok((verdict as { reason: string }).reason.includes('恶意意图'))
 })
 
 test('可商量未达标则询问用户', () => {
@@ -75,7 +71,7 @@ test('可商量未达标则询问用户', () => {
     assert.equal(verdict.kind, 'ask')
     const reason = (verdict as { reason: string }).reason
     assert.ok(reason.includes('操作安全性'))
-    assert.ok(!reason.includes('原则问题'))
+    assert.ok(reason.includes('需要你决定'))
 })
 
 test('首个未达标者决定结果，不检查后续', () => {

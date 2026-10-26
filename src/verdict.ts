@@ -16,15 +16,15 @@ const AUTO_REVIEW_FAILED_ERROR_NAME = 'AutoReviewFailedError'
 /** 审查无法产出结论时持久化的结构化错误码。 */
 const AUTO_REVIEW_FAILED_CODE = 'AUTO_REVIEW_FAILED'
 
-/** 把固定面向模型的最终 Auto 拒绝，连同可选界面细节一并物化。 */
-export function denied(exec: ToolExecution, reason?: string): PreToolDecision {
+/** 把一次最终拒绝物化；理由供 AI 读取后修正调用。 */
+export function denied(exec: ToolExecution, reason: string): PreToolDecision {
     return {
         kind: 'deny',
         reason: `Auto review rejected tool "${exec.name}"; its body was not executed`,
         info: {
             name: AUTO_REVIEW_DENIED_ERROR_NAME,
             code: AUTO_REVIEW_DENIED_CODE,
-            ...reason === undefined ? {} : { reason },
+            reason,
         },
     }
 }

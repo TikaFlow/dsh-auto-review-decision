@@ -9,7 +9,6 @@ import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import type { RequestMessage } from '@deepseek-ai/dsh-llm'
 import type {
     CallMode,
     HistoricalEntry,
@@ -19,12 +18,12 @@ import type {
     ScopedPtcStart,
 } from './types.ts'
 import {
-    isRecord,
     json,
     loggedSchema,
     parseLoggedArguments,
     sameJson,
 } from './log.ts'
+import { isRecord } from './shared/tools.ts'
 import {
     creationPrompts,
     filteredUserEntries,
@@ -104,7 +103,7 @@ export function snapshotAutoReview(
     const events = session.snapshotEvents()
     const nodes = [...session.surface.nodes]
     const header = session.requestHeader()
-    if (header === undefined || header.config.provider.length === 0 || header.config.model.length === 0) {
+    if (header === undefined) {
         throw new Error('auto-review: no complete request-header route is available')
     }
 
@@ -257,22 +256,9 @@ export function snapshotAutoReview(
         pushCall('ptc-inner', pending.key, exec.name, json(currentPtcStart.event.data.arguments), pending.schema)
     }
     return deepFreeze({
-        provider: header.config.provider,
-        model: header.config.model,
         cwd,
         history,
         pending,
     })
 }
 
-/**
- * 渲染环境与每条保留记录对应的消息。条目保持会话顺序，且每条消息在后续
- * 审查中保持字节一致，因此一次审查的消息是上一次审查消息的扩展，包含其待审调用。
- * 只在消息结尾或显式标记处缓存的 provider 因此能复用此前历史，而不只是策略。
- */
-export function reviewMessages(snapshot: ReviewSnapshot): RequestMessage[] {
-    return [
-        `ENVIRONMENT\n${json({ cwd: snapshot.cwd })}`,
-        ...snapshot.history.map(entry => json(entry)),
-    ].map(text => ({ role: 'user', content: [{ type: 'text', text }] }))
-}

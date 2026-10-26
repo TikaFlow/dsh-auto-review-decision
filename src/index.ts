@@ -7,7 +7,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-instructions'
 import type {} from '@deepseek-ai/dsh-subagent'
-import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { readReviewConfig, setConfigInput, type ConfigInput } from './config.ts'
 import { applyLifecycle } from './lifecycle.ts'
@@ -15,7 +14,7 @@ import { applyLifecycle } from './lifecycle.ts'
 /** Cordis 插件名，供加载器诊断使用。 */
 export const name = 'auto-review-systemOne'
 /** Auto 可被声明前必须具备的完整宿主服务。 */
-export const inject = ['approval', 'llm', 'permissionPresets', 'sessions', 'tools', 'workingDirectory']
+export const inject = ['credentials', 'permissionPresets', 'sessions', 'tools', 'workingDirectory']
 
 export { Config } from './config.ts'
 

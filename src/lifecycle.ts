@@ -45,19 +45,18 @@ export function applyLifecycle(ctx: Context): void {
                     shownBySession.set(agent.session, shown)
                 }
                 const review = await classifyRisk(ctx, agent, exec, signal, shown).then(
-                    decision => ({ ok: true as const, decision }),
+                    verdict => ({ ok: true as const, verdict }),
                     (error: unknown) => ({ ok: false as const, error }),
                 )
                 if (isAborted(lifecycle.signal)) return { kind: 'cancel' }
                 if (!review.ok) return failed(exec, review.error)
-                const { decision } = review
-                const reason = 'reason' in decision ? decision.reason : undefined
+                const { verdict } = review
                 // 结论自带落地方式：deny 是原则问题，不询问用户，也不执行调用体。
-                if (decision.decision === 'deny') return denied(exec, reason)
+                if (verdict.kind === 'deny') return denied(exec, verdict.reason)
                 const downstream = await next()
                 if (isAborted(lifecycle.signal)) return { kind: 'cancel' }
-                if (decision.decision === 'allow' || downstream.kind !== 'allow') return downstream
-                return askUser(exec, reason)
+                if (verdict.kind === 'allow' || downstream.kind !== 'allow') return downstream
+                return askUser(exec, verdict.reason)
             } finally {
                 active.delete(completed.promise)
                 completed.resolve()

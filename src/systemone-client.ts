@@ -5,6 +5,7 @@
  */
 
 import { REVIEW_TIMEOUT_MS, SCORE_LEVELS, decisionEndpoint } from './shared/config.ts'
+import { isFiniteNumber, isRecord } from './shared/tools.ts'
 import type {
     SystemOneAnswer,
     SystemOneQuestion,
@@ -82,16 +83,6 @@ export interface DecisionCallOptions {
     readonly fetchImpl?: typeof fetch
 }
 
-/** 判断一个未知值是否为有限数。 */
-function isNumber(value: unknown): value is number {
-    return typeof value === 'number' && Number.isFinite(value)
-}
-
-/** 判断一个未知值是否为对象记录。 */
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 /** 从非 200 的响应体里摘出简短摘要，不含响应原文。 */
 function statusDetail(body: string): string {
     const trimmed = body.trim()
@@ -124,19 +115,19 @@ function checkAnswer(id: string, question: SystemOneQuestion, answer: SystemOneA
         throw new SystemOneCallError(FAILURE.field, `问题 "${id}" 的答案类型应为 ${question.type}，实为 ${answer.type}`)
     }
     if (answer.type === 'noul') {
-        if (!isNumber(answer.noul) || answer.noul < 0 || answer.noul > 1) {
+        if (!isFiniteNumber(answer.noul) || answer.noul < 0 || answer.noul > 1) {
             throw new SystemOneCallError(FAILURE.range, `问题 "${id}" 的 noul 取值越界（应在 0–1）`)
         }
     } else if (answer.type === 'score') {
         const top = SCORE_LEVELS - 1
-        if (!isNumber(answer.score) || answer.score < 0 || answer.score > top) {
+        if (!isFiniteNumber(answer.score) || answer.score < 0 || answer.score > top) {
             throw new SystemOneCallError(FAILURE.range, `问题 "${id}" 的 score 取值越界（应在 0–${top}）`)
         }
     }
     const probabilities = 'probabilities' in answer ? answer.probabilities : undefined
     if (probabilities !== undefined) {
         for (const [key, value] of Object.entries(probabilities)) {
-            if (!isNumber(value) || value < 0) {
+            if (!isFiniteNumber(value) || value < 0) {
                 throw new SystemOneCallError(FAILURE.range, `问题 "${id}" 的 probabilities["${key}"] 不是非负有限数`)
             }
         }
