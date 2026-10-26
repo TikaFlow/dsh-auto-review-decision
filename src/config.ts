@@ -20,6 +20,7 @@ import {
 /** 宿主配置 schema；字段全为 `.volatile()`，改完下次审查即生效。 */
 export const Config = z.object({
     baseURL: z.string().default(DEFAULT_CONFIG.baseURL).description(CONFIG_LABELS.baseURL).volatile(),
+    fullURL: z.boolean().default(DEFAULT_CONFIG.fullURL).description(CONFIG_LABELS.fullURL).volatile(),
     model: z.string().default(DEFAULT_CONFIG.model).description(CONFIG_LABELS.model).volatile(),
     confidenceThreshold: z.number().min(MIN_CONFIDENCE_THRESHOLD).max(MAX_CONFIDENCE_THRESHOLD)
         .default(DEFAULT_CONFIG.confidenceThreshold).description(CONFIG_LABELS.confidenceThreshold).volatile(),
@@ -32,14 +33,7 @@ export const Config = z.object({
 })
 
 /** 配置项的运行时形态：字段可能被宿主包成 volatile 引用。 */
-export interface ConfigInput {
-    readonly baseURL?: unknown
-    readonly model?: unknown
-    readonly confidenceThreshold?: unknown
-    readonly onSessionReset?: unknown
-    readonly onApiUnavailable?: unknown
-    readonly notifyOnFallback?: unknown
-}
+export type ConfigInput = Partial<Record<ConfigKey, unknown>>
 
 /** 一次读取的结果。 */
 export interface ConfigRead {
@@ -101,7 +95,7 @@ function readTarget(
 }
 
 /** 读布尔字段：缺失落默认，非布尔非法。 */
-function readBoolean(input: ConfigInput, key: 'notifyOnFallback'): boolean {
+function readBoolean(input: ConfigInput, key: 'fullURL' | 'notifyOnFallback'): boolean {
     const value = current(input[key])
     if (value === undefined || value === null) return DEFAULT_CONFIG[key]
     if (typeof value !== 'boolean') throw invalid(key, '必须是布尔值')
@@ -120,10 +114,12 @@ function readBoolean(input: ConfigInput, key: 'notifyOnFallback'): boolean {
 export function readReviewConfig(input: ConfigInput | undefined): ConfigRead {
     const raw: ConfigInput = input ?? {}
     const baseURL = readString(raw, 'baseURL', '')
+    const fullURL = readBoolean(raw, 'fullURL')
     const urlProblem = baseURLProblem(baseURL)
     if (urlProblem !== undefined) throw invalid('baseURL', urlProblem)
     const values: ReviewConfig = {
         baseURL,
+        fullURL,
         model: readString(raw, 'model', ''),
         confidenceThreshold: readThreshold(raw),
         onSessionReset: readTarget(raw, 'onSessionReset'),

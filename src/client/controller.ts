@@ -15,7 +15,7 @@ import {
     type SettingsFormShell,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type { } from '@deepseek-ai/dsh-api-remotes/client'
 import {
     CONFIG_NS,
     CREDENTIAL_REF,
@@ -62,8 +62,13 @@ function presetField(field: 'onSessionReset' | 'onApiUnavailable'): SettingsFiel
     }
 }
 
+/** 把布尔字段的草稿文本读成布尔值。 */
+function draftBoolean(text: string): boolean {
+    return text === 'true'
+}
+
 /** 布尔字段的 spec：以 `true`/`false` 文本承载。 */
-function booleanField(field: 'notifyOnFallback'): SettingsFieldSpec {
+function booleanField(field: 'fullURL' | 'notifyOnFallback'): SettingsFieldSpec {
     return {
         field,
         format: value => typeof value === 'boolean' ? String(value) : '',
@@ -80,6 +85,8 @@ function booleanField(field: 'notifyOnFallback'): SettingsFieldSpec {
 export interface CardState extends SettingsFormShell {
     /** 基址字段。 */
     readonly baseURL: SettingsFieldState
+    /** 完整 URL 开关。 */
+    readonly fullURL: boolean
     /** 模型字段。 */
     readonly model: SettingsFieldState
     /** 阈值字段。 */
@@ -106,6 +113,8 @@ export interface CardFace extends SettingsFormActions {
     readonly hooks: { readonly card: SnapshotStore<CardState> }
     /** 切换两个预设字段。 */
     readonly setPreset: (field: 'onSessionReset' | 'onApiUnavailable', value: string) => void
+    /** 切换完整 URL 开关。 */
+    readonly setFullURL: (value: boolean) => void
     /** 切换降级提示。 */
     readonly setNotify: (value: boolean) => void
     /** 连通性测试。 */
@@ -134,6 +143,7 @@ export class CardController {
         const scope = ctx.configForms.get<Record<string, unknown>>(CONFIG_NS) as SettingsFormScope<Record<string, unknown>>
         this.form = new SettingsFormModel(scope, [
             baseURLField,
+            booleanField('fullURL'),
             settingsTextField('model'),
             thresholdField,
             presetField('onSessionReset'),
@@ -157,11 +167,12 @@ export class CardController {
         return {
             ...this.form.shell(),
             baseURL,
+            fullURL: draftBoolean(this.form.field('fullURL').text),
             model,
             confidenceThreshold: this.form.field('confidenceThreshold'),
             onSessionReset: this.form.field('onSessionReset').text,
             onApiUnavailable: this.form.field('onApiUnavailable').text,
-            notifyOnFallback: this.form.field('notifyOnFallback').text === 'true',
+            notifyOnFallback: draftBoolean(this.form.field('notifyOnFallback').text),
             apiKey,
             apiKeyConfigured: this.credential.configured,
             apiKeyWritable: this.credential.writable,
@@ -210,13 +221,14 @@ export class CardController {
             save: actions.save,
             discard: actions.discard,
             setPreset: (field, value) => { actions.edit(field, value) },
+            setFullURL: (value) => { actions.edit('fullURL', String(value)) },
             setNotify: (value) => { actions.edit('notifyOnFallback', String(value)) },
             test: () => { this.test() },
         }
     }
 
     /** 连通性测试；逻辑待接入 SystemOne 探活。 */
-    test(): void {}
+    test(): void { }
 
     /** 释放订阅。 */
     dispose(): void {

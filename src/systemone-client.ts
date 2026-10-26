@@ -73,6 +73,8 @@ const MAX_DETAIL = 200
 export interface DecisionCallOptions {
     /** 已校验的端点基址。 */
     readonly baseURL: string
+    /** 基址是否已含完整路径；为真时不追加 `/systemone`。 */
+    readonly fullURL: boolean
     /** 决策模型标识；留空则不发送该字段。 */
     readonly model: string
     /** 凭据解析得到的密钥。 */
@@ -208,7 +210,7 @@ export async function postDecision(
     const fetchImpl = options.fetchImpl ?? fetch
     let response: Response
     try {
-        response = await fetchImpl(decisionEndpoint(options.baseURL), {
+        response = await fetchImpl(decisionEndpoint(options.baseURL, options.fullURL), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -54,19 +54,6 @@ export const MIN_HIGH_RATIO = 0.6
 /** 两个「去向」配置项共用的候选。 */
 export const PRESET_OPTIONS = ['read-only', 'workspace-write', 'danger-full-access'] as const
 
-/** 配置字段键。 */
-export const CONFIG_KEYS = [
-    'baseURL',
-    'model',
-    'confidenceThreshold',
-    'onSessionReset',
-    'onApiUnavailable',
-    'notifyOnFallback',
-] as const
-
-/** 一个配置字段键。 */
-export type ConfigKey = (typeof CONFIG_KEYS)[number]
-
 /** 一个权限预设的取值。 */
 export type PresetOption = (typeof PRESET_OPTIONS)[number]
 
@@ -74,6 +61,8 @@ export type PresetOption = (typeof PRESET_OPTIONS)[number]
 export interface ReviewConfig {
     /** 端点基址，不含 `/systemone`。 */
     readonly baseURL: string
+    /** 基址是否已含完整路径；为真时不追加 `/systemone`。 */
+    readonly fullURL: boolean
     /** 决策模型标识。 */
     readonly model: string
     /** 所有问题的基准阈值。 */
@@ -86,9 +75,13 @@ export interface ReviewConfig {
     readonly notifyOnFallback: boolean
 }
 
+/** 一个配置字段键。 */
+export type ConfigKey = keyof ReviewConfig
+
 /** 缺省配置。 */
 export const DEFAULT_CONFIG: ReviewConfig = {
     baseURL: '',
+    fullURL: false,
     model: '',
     /** 基准阈值：所有问题因子的乘数基准。 */
     confidenceThreshold: 0.8,
@@ -100,6 +93,7 @@ export const DEFAULT_CONFIG: ReviewConfig = {
 /** 字段键的中文名。 */
 export const CONFIG_LABELS: Readonly<Record<ConfigKey, string>> = {
     baseURL: 'API 地址',
+    fullURL: '地址为完整 URL',
     model: '模型 ID',
     confidenceThreshold: '置信度阈值',
     onSessionReset: '会话重置时的权限模式',
@@ -108,12 +102,14 @@ export const CONFIG_LABELS: Readonly<Record<ConfigKey, string>> = {
 }
 
 /**
- * 拼出决策端点：配置只填基址，`/systemone` 由代码追加。
+ * 拼出决策端点。
  * @param baseURL - 已校验的基址。
+ * @param fullURL - 基址是否已含完整路径；为真时只去掉末尾斜杠。
  * @returns 决策端点 URL。
  */
-export function decisionEndpoint(baseURL: string): string {
-    return `${baseURL.replace(/\/+$/u, '')}/systemone`
+export function decisionEndpoint(baseURL: string, fullURL: boolean): string {
+    const trimmed = baseURL.replace(/\/+$/u, '')
+    return fullURL ? trimmed : `${trimmed}/systemone`
 }
 
 /**
@@ -131,6 +127,5 @@ export function baseURLProblem(value: string): string | undefined {
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return '协议必须是 http 或 https'
     if (url.search !== '' || url.hash !== '') return '不应带查询串或片段'
-    if (/\/systemone\/?$/u.test(url.pathname)) return '不应包含 /systemone，代码会自动追加'
     return undefined
 }
