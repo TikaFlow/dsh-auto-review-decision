@@ -13,8 +13,8 @@ import { exitAutoSessions } from './session-exit.ts'
 import { FALLBACK_FAILURE_THRESHOLD, NOTICE_ROUTE } from './shared/config.ts'
 import { SystemOneCallError } from './systemone-client.ts'
 
-/** 计入降级的失败类别：请求与解析类；凭据缺失与主动中止不计。 */
-const COUNTED = new Set<string>(['timeout', 'network', 'status', 'parse', 'field', 'range'])
+/** 计入降级的失败类别：决策端点不可用。 */
+const COUNTED = new Set<string>(['config', 'timeout', 'network', 'status', 'parse', 'field', 'range'])
 
 /** 一条提示事件。 */
 interface NoticeEvent {

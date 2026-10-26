@@ -17,8 +17,8 @@ import type {
 
 /** 一次调用失败的归类：取值即机器可读的类别，修正项由 {@link FAILURE_FIX} 给出。 */
 export const FAILURE = {
-    /** 凭据未配置。 */
-    credential: 'credential',
+    /** 配置不完整：地址缺失或凭据未配置。 */
+    config: 'config',
     /** 请求超时。 */
     timeout: 'timeout',
     /** 调用方中止。 */
@@ -40,7 +40,7 @@ export type SystemOneFailureKind = (typeof FAILURE)[keyof typeof FAILURE]
 
 /** 每类失败对应需要修正的配置项。 */
 export const FAILURE_FIX: Readonly<Record<SystemOneFailureKind, string>> = {
-    credential: 'API 密钥',
+    config: 'API 地址、API 密钥',
     timeout: 'API 地址',
     aborted: '',
     network: 'API 地址',
@@ -198,7 +198,7 @@ export async function postDecision(
     options: DecisionCallOptions,
 ): Promise<SystemOneResponse> {
     if (options.apiKey === '') {
-        throw new SystemOneCallError(FAILURE.credential, '凭据未配置')
+        throw new SystemOneCallError(FAILURE.config, '凭据未配置')
     }
     const body: Record<string, unknown> = { state: request.state, questions: request.questions }
     if (request.model !== undefined && request.model !== '') body.model = request.model

@@ -16,7 +16,7 @@ import { getGuard } from './fallback.ts'
 import { decisionQuestions, judge } from './questions.ts'
 import { snapshotAutoReview } from './snapshot.ts'
 import { CREDENTIAL_REF, HISTORY_CHAR_BUDGET, HISTORY_WINDOW } from './shared/config.ts'
-import { postDecision, SystemOneCallError } from './systemone-client.ts'
+import { postDecision, FAILURE, SystemOneCallError } from './systemone-client.ts'
 import { whitelistVerdict } from './whitelist.ts'
 
 /**
@@ -58,11 +58,11 @@ async function review(
 ): Promise<ReviewVerdict> {
     const config = getReviewConfig()
     if (config.missing.length > 0) {
-        throw new SystemOneCallError('credential', `配置未完成（${config.missing.join('、')}）`)
+        throw new SystemOneCallError(FAILURE.config, `配置未完成（${config.missing.join('、')}）`)
     }
     const credential = await ctx.credentials.resolve(credentialRef(CREDENTIAL_REF))
     if (credential === undefined) {
-        throw new SystemOneCallError('credential', '凭据未配置')
+        throw new SystemOneCallError(FAILURE.config, '凭据未配置')
     }
     const cwd = await ctx.workingDirectory.ensure(agent, signal)
     const snapshot = snapshotAutoReview(agent, exec, cwd, shown)

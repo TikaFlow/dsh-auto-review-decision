@@ -90,7 +90,7 @@ test('模型为空时不发送该字段', async () => {
 })
 
 test('凭据缺失', async () => {
-    await rejectsKind(() => postDecision(request(), { ...BASE, apiKey: '' }), FAILURE.credential)
+    await rejectsKind(() => postDecision(request(), { ...BASE, apiKey: '' }), FAILURE.config)
 })
 
 test('非 200 带摘要', async () => {
@@ -245,7 +245,7 @@ test('响应校验可单独调用', () => {
 
 test('每类失败的消息指明需修正的配置项', () => {
     const cases: ReadonlyArray<readonly [SystemOneFailureKind, string]> = [
-        [FAILURE.credential, 'API 密钥'],
+        [FAILURE.config, 'API 密钥'],
         [FAILURE.timeout, 'API 地址'],
         [FAILURE.network, 'API 地址'],
         [FAILURE.status, 'API 地址'],
