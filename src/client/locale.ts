@@ -10,8 +10,11 @@
 const en = {
     title: 'SystemOne review',
     description: 'Review every tool call with the SystemOne decision API.',
+    config: 'Configuration',
     baseURL: 'API address',
     baseURLHint: 'Without /systemone; the code appends it.',
+    baseURLHintFull: 'Complete endpoint URL; used as-is.',
+    fullURL: 'The address is a complete URL',
     model: 'Model ID',
     modelHint: 'Model identifier used for the decision request.',
     apiKey: 'API key',
@@ -39,6 +42,7 @@ const en = {
     reset: 'Reset',
     invalidNumber: 'Enter a number in range.',
     invalidURL: 'Enter an http(s) URL without /systemone.',
+    invalidURLFull: 'Enter a complete http(s) URL.',
     invalidModel: 'Enter a model name.',
 }
 
@@ -46,8 +50,11 @@ const en = {
 const zh = {
     title: 'SystemOne 审查',
     description: '使用 SystemOne 决策接口审查每一次工具调用。',
+    config: '配置',
     baseURL: 'API 地址',
     baseURLHint: '不含 /systemone，代码会自动追加。',
+    baseURLHintFull: '完整端点地址，直接使用。',
+    fullURL: '地址为完整 URL',
     model: '模型 ID',
     modelHint: '决策请求使用的模型标识。',
     apiKey: 'API 密钥',
@@ -57,7 +64,7 @@ const zh = {
     confidenceThreshold: '置信度阈值',
     confidenceThresholdHint: '越高越保守，取值 0.6–0.99。',
     judgement: '判定',
-    fallback: '降级去向',
+    fallback: '降级',
     onSessionReset: '会话重置时的权限模式',
     onApiUnavailable: '接口不可用时的权限模式',
     notifyOnFallback: '降级时提示用户',
@@ -75,6 +82,7 @@ const zh = {
     reset: '重置',
     invalidNumber: '请输入范围内的数字。',
     invalidURL: '请输入不含 /systemone 的 http(s) 地址。',
+    invalidURLFull: '请输入完整的 http(s) 地址。',
     invalidModel: '请输入模型名。',
 } satisfies typeof en
 
