@@ -17,6 +17,7 @@ import { decisionQuestions, judge } from './questions.ts'
 import { snapshotAutoReview } from './snapshot.ts'
 import { CREDENTIAL_REF, HISTORY_CHAR_BUDGET, HISTORY_WINDOW } from './shared/config.ts'
 import { postDecision, SystemOneCallError } from './systemone-client.ts'
+import { whitelistVerdict } from './whitelist.ts'
 
 /**
  * 作为审查请求 `state.policy` 并入的固定策略。
@@ -74,6 +75,9 @@ async function review(
             reason: `调用不符合工具契约：${issues.map(issue => issue.message).join('；')}`,
         }
     }
+    // 白名单在本地预检之后生效：免审调用仍须通过参数校验。
+    const exempt = await whitelistVerdict(ctx, exec, cwd, signal)
+    if (exempt !== undefined) return exempt
     // 此审查请求只发往决策端点，永不进入会话日志。
     // history 只承载文本事实：非文本块（图片、附件等）降为占位说明。
     const projected = snapshot.history.map(entry => {
