@@ -7,26 +7,28 @@
 import z from '@deepseek-ai/schemastery'
 import {
     CONFIG_LABELS,
-    DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_CONFIG,
     MAX_CONFIDENCE_THRESHOLD,
     MIN_CONFIDENCE_THRESHOLD,
     PRESET_OPTIONS,
     baseURLProblem,
     type ConfigKey,
+    type PresetOption,
     type ReviewConfig,
 } from './shared/config.ts'
 
 /** 宿主配置 schema；字段全为 `.volatile()`，改完下次审查即生效。 */
 export const Config = z.object({
-    baseURL: z.string().default('').description(CONFIG_LABELS.baseURL).volatile(),
-    model: z.string().default('').description(CONFIG_LABELS.model).volatile(),
+    baseURL: z.string().default(DEFAULT_CONFIG.baseURL).description(CONFIG_LABELS.baseURL).volatile(),
+    model: z.string().default(DEFAULT_CONFIG.model).description(CONFIG_LABELS.model).volatile(),
     confidenceThreshold: z.number().min(MIN_CONFIDENCE_THRESHOLD).max(MAX_CONFIDENCE_THRESHOLD)
-        .default(DEFAULT_CONFIDENCE_THRESHOLD).description(CONFIG_LABELS.confidenceThreshold).volatile(),
-    onSessionReset: z.union([...PRESET_OPTIONS]).default('workspace-write')
+        .default(DEFAULT_CONFIG.confidenceThreshold).description(CONFIG_LABELS.confidenceThreshold).volatile(),
+    onSessionReset: z.union([...PRESET_OPTIONS]).default(DEFAULT_CONFIG.onSessionReset)
         .description(CONFIG_LABELS.onSessionReset).volatile(),
-    onApiUnavailable: z.union([...PRESET_OPTIONS]).default('workspace-write')
+    onApiUnavailable: z.union([...PRESET_OPTIONS]).default(DEFAULT_CONFIG.onApiUnavailable)
         .description(CONFIG_LABELS.onApiUnavailable).volatile(),
-    notifyOnFallback: z.boolean().default(true).description(CONFIG_LABELS.notifyOnFallback).volatile(),
+    notifyOnFallback: z.boolean().default(DEFAULT_CONFIG.notifyOnFallback)
+        .description(CONFIG_LABELS.notifyOnFallback).volatile(),
 })
 
 /** 配置项的运行时形态：字段可能被宿主包成 volatile 引用。 */
@@ -72,7 +74,7 @@ function readString(input: ConfigInput, key: 'baseURL' | 'model', fallback: stri
 /** 读阈值：缺失落默认，非有限数或越界非法（不 clamp）。 */
 function readThreshold(input: ConfigInput): number {
     const value = current(input.confidenceThreshold)
-    if (value === undefined || value === null) return DEFAULT_CONFIDENCE_THRESHOLD
+    if (value === undefined || value === null) return DEFAULT_CONFIG.confidenceThreshold
     if (typeof value !== 'number' || !Number.isFinite(value)) throw invalid('confidenceThreshold', '必须是有限数')
     if (value < MIN_CONFIDENCE_THRESHOLD || value > MAX_CONFIDENCE_THRESHOLD) {
         throw invalid('confidenceThreshold', `必须在 ${MIN_CONFIDENCE_THRESHOLD} 与 ${MAX_CONFIDENCE_THRESHOLD} 之间`)
@@ -80,11 +82,19 @@ function readThreshold(input: ConfigInput): number {
     return value
 }
 
+/** 判断一个字符串是否为候选预设。 */
+function isPresetOption(value: string): value is PresetOption {
+    return (PRESET_OPTIONS as readonly string[]).includes(value)
+}
+
 /** 读预设去向：缺失落默认，不在候选表内非法。 */
-function readTarget(input: ConfigInput, key: 'onSessionReset' | 'onApiUnavailable'): string {
+function readTarget(
+    input: ConfigInput,
+    key: 'onSessionReset' | 'onApiUnavailable',
+): PresetOption {
     const value = current(input[key])
-    if (value === undefined || value === null) return 'workspace-write'
-    if (typeof value !== 'string' || !PRESET_OPTIONS.includes(value as never)) {
+    if (value === undefined || value === null) return DEFAULT_CONFIG[key]
+    if (typeof value !== 'string' || !isPresetOption(value)) {
         throw invalid(key, `必须是 ${PRESET_OPTIONS.join(' / ')} 之一`)
     }
     return value
@@ -93,7 +103,7 @@ function readTarget(input: ConfigInput, key: 'onSessionReset' | 'onApiUnavailabl
 /** 读布尔字段：缺失落默认，非布尔非法。 */
 function readBoolean(input: ConfigInput, key: 'notifyOnFallback'): boolean {
     const value = current(input[key])
-    if (value === undefined || value === null) return true
+    if (value === undefined || value === null) return DEFAULT_CONFIG[key]
     if (typeof value !== 'boolean') throw invalid(key, '必须是布尔值')
     return value
 }

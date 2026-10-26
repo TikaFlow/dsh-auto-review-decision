@@ -27,9 +27,6 @@ export const MIN_CONFIDENCE_THRESHOLD = 0.6
 /** 置信度阈值上限：再高则判定几乎必然失败。 */
 export const MAX_CONFIDENCE_THRESHOLD = 0.99
 
-/** 置信度阈值默认值。 */
-export const DEFAULT_CONFIDENCE_THRESHOLD = 0.85
-
 /** 请求超时（毫秒）。 */
 export const REVIEW_TIMEOUT_MS = 30_000
 
@@ -64,6 +61,9 @@ export const CONFIG_KEYS = [
 /** 一个配置字段键。 */
 export type ConfigKey = (typeof CONFIG_KEYS)[number]
 
+/** 一个权限预设的取值。 */
+export type PresetOption = (typeof PRESET_OPTIONS)[number]
+
 /** 解析后的审查配置。 */
 export interface ReviewConfig {
     /** 端点基址，不含 `/systemone`。 */
@@ -73,9 +73,9 @@ export interface ReviewConfig {
     /** 所有问题的基准阈值。 */
     readonly confidenceThreshold: number
     /** 插件卸载或会话重置时的去向。 */
-    readonly onSessionReset: string
+    readonly onSessionReset: PresetOption
     /** 连续失败降级后的去向。 */
-    readonly onApiUnavailable: string
+    readonly onApiUnavailable: PresetOption
     /** 降级时是否提示用户。 */
     readonly notifyOnFallback: boolean
 }
@@ -84,7 +84,8 @@ export interface ReviewConfig {
 export const DEFAULT_CONFIG: ReviewConfig = {
     baseURL: '',
     model: '',
-    confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
+    /** 基准阈值：所有问题因子的乘数基准。 */
+    confidenceThreshold: 0.8,
     onSessionReset: 'workspace-write',
     onApiUnavailable: 'workspace-write',
     notifyOnFallback: true,

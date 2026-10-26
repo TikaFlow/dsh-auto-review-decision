@@ -6,8 +6,8 @@
 
 import { HIGH_LEVEL_START, MIN_HIGH_RATIO, SAFE_LEVEL_START, SCORE_LEVELS } from './shared/config.ts'
 import {
-    DECISION_INSTRUCTIONS,
     DECISION_QUESTION_ID,
+    DECISION_QUESTION_SPEC,
     SCORE_QUESTION_IDS,
     SCORE_QUESTION_SPECS,
     QUESTION_LABELS,
@@ -21,10 +21,14 @@ export type ReviewVerdict =
     | { readonly kind: 'deny'; readonly reason: string }
     | { readonly kind: 'ask'; readonly reason: string }
 
-/** 构造本插件的问题表 */
+/** 构造本插件的问题表。 */
 export function decisionQuestions(): SystemOneQuestions {
     return {
-        [DECISION_QUESTION_ID]: { type: 'noul', instructions: DECISION_INSTRUCTIONS },
+        [DECISION_QUESTION_ID]: {
+            type: 'noul',
+            instructions: DECISION_QUESTION_SPEC.instructions,
+            criteria: DECISION_QUESTION_SPEC.criteria,
+        },
         ...Object.fromEntries(SCORE_QUESTION_IDS.map(id => [
             id,
             {
@@ -89,7 +93,8 @@ export function judge(response: SystemOneResponse, threshold: number): ReviewVer
     const decision = readAnswer(response, DECISION_QUESTION_ID)
     const noul = decision?.noul
     const probability = typeof noul === 'number' && Number.isFinite(noul) ? noul : 0
-    if (probability < threshold) {
+    const decisionThreshold = threshold * DECISION_QUESTION_SPEC.factor
+    if (probability < decisionThreshold) {
         return { kind: 'deny', reason: '该调用未通过安全审查' }
     }
 

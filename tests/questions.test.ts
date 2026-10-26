@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { judge, decisionQuestions, safetyOf, type ReviewVerdict } from '../src/questions.ts'
-import { DECISION_QUESTION_ID, SCORE_QUESTION_IDS } from '../src/shared/questions.ts'
-import { SCORE_LEVELS, SAFE_LEVEL_START } from '../src/shared/config.ts'
+import { DECISION_QUESTION_ID, DECISION_QUESTION_SPEC, SCORE_QUESTION_IDS } from '../src/shared/questions.ts'
+import { DEFAULT_CONFIG, SCORE_LEVELS, SAFE_LEVEL_START } from '../src/shared/config.ts'
 import type { SystemOneResponse } from '../src/systemone.ts'
 
 /** 基准阈值。 */
-const THRESHOLD = 0.85
+const THRESHOLD = DEFAULT_CONFIG.confidenceThreshold
 
 /** 构造一条 score 答案。 */
 function score(value: number, probabilities?: Record<string, number>) {
@@ -44,9 +44,11 @@ test('问题表为 1 个 noul + 10 个 score，顺序与定义一致', () => {
     }
 })
 
-test('总判定问题不带档位说明', () => {
-    const questions = decisionQuestions()
-    assert.equal(questions[DECISION_QUESTION_ID].criteria, undefined)
+test('总判定问题带两端判定说明', () => {
+    const criteria = decisionQuestions()[DECISION_QUESTION_ID].criteria
+    assert.ok(criteria !== undefined && typeof criteria === 'object' && !Array.isArray(criteria))
+    assert.equal(typeof (criteria as { true: string }).true, 'string')
+    assert.equal(typeof (criteria as { false: string }).false, 'string')
 })
 
 test('全部通过则放行', () => {
@@ -54,8 +56,14 @@ test('全部通过则放行', () => {
     assert.deepEqual(verdict as unknown, { kind: 'allow' })
 })
 
+test('基准阈值为 0.8', () => {
+    assert.equal(DEFAULT_CONFIG.confidenceThreshold, 0.8)
+})
+
 test('noul 未达阈值则拒绝', () => {
-    const verdict = judge(response(0.84, ALL_PASS), THRESHOLD)
+    // 总判定有效阈值为 基准 × 0.98
+    const decisionThreshold = THRESHOLD * DECISION_QUESTION_SPEC.factor
+    const verdict = judge(response(decisionThreshold - 0.01, ALL_PASS), THRESHOLD)
     assert.equal(verdict.kind, 'deny')
     assert.ok((verdict as { reason: string }).reason.includes('未通过安全审查'))
 })
@@ -83,9 +91,9 @@ test('首个未达标者决定结果，不检查后续', () => {
     assert.equal((second as { reason: string }).reason.includes('操作安全性'), true)
 })
 
-test('有效阈值按因子下调：0.95 因子的问题阈值更松', () => {
-    // necessity 因子 0.95 → 有效阈值 0.8075；安全度 0.82 达标
-    const pass = judge(response(0.95, { ...ALL_PASS, necessity: score(3.28, { '2': 0.2, '3': 0.5, '4': 0.12 }) }), THRESHOLD)
+test('有效阈值按因子下调：0.92 因子的问题阈值更松', () => {
+    // necessity 因子 0.92 → 有效阈值 0.736；安全度 0.75 达标
+    const pass = judge(response(0.95, { ...ALL_PASS, necessity: score(3, { '2': 0.2, '3': 0.5, '4': 0.12 }) }), THRESHOLD)
     assert.equal((pass as { kind: string }).kind, 'allow')
 })
 
