@@ -15,6 +15,12 @@ export const PLUGIN_NAME = 'dsh-auto-review-systemOne'
 /** 凭据引用名：写死而非配置项，值走宿主凭据管理。 */
 export const CREDENTIAL_REF = 'TIKAFLOW_SYSTEMONE_API_KEY'
 
+/** 审查请求保留的最近历史条目数。 */
+export const HISTORY_WINDOW = 128
+
+/** 审查请求的 history 字符预算；超出时从最旧一条开始丢弃。 */
+export const HISTORY_CHAR_BUDGET = 48 * 1024
+
 /** 置信度阈值下限。 */
 export const MIN_CONFIDENCE_THRESHOLD = 0.6
 
