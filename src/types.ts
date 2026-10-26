@@ -45,12 +45,24 @@ export interface HistoricalToolSchema {
     readonly parameters: Record<string, unknown>
 }
 
+/** 模型在发起调用前写下的说明：它声称自己要做什么。 */
+export interface HistoricalAssistantClaim {
+    readonly kind: 'assistant-claim'
+    readonly role: 'fact'
+    /** 模型说明的原文。 */
+    readonly text: string
+}
+
 /** 保留历史中的一条记录。 */
-export type HistoricalEntry = HistoricalUserMessage | HistoricalToolCall | HistoricalToolSchema
+export type HistoricalEntry =
+    | HistoricalUserMessage
+    | HistoricalToolCall
+    | HistoricalToolSchema
+    | HistoricalAssistantClaim
 
 /**
  * 同一会话此前审查已展示过的 schema，按“模式 + 作用域调用键”索引。
- * 后续审查会在同一历史位置重复它，使每次审查的消息是上一次的前缀扩展。
+ * 后续审查会在同一历史位置重复它，使每次审查的历史是上一次的前缀扩展。
  */
 export type ShownSchemas = Map<string, HistoricalToolSchema>
 

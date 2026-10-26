@@ -1,16 +1,16 @@
 /**
- * 审查输入的冻结与渲染：从会话日志与待执行动作构造不可变快照，
- * 再渲染成逐条稳定的消息序列。
+ * 审查输入的冻结：从会话日志与待执行动作构造不可变快照。
  *
  * @module dsh-auto-review-systemOne/snapshot
  */
 
-import type { ToolSchema } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type {
     CallMode,
+    HistoricalAssistantClaim,
     HistoricalEntry,
     HistoricalToolSchema,
     NativeCallEvent,
@@ -81,13 +81,28 @@ function ptcAction(
     return toolSchemaEntry('ptc-inner', loggedSchema(exec.schema, exec.name, 'PTC'))
 }
 
+/** 提取待审调用所在那条消息里模型写下的说明。 */
+function assistantClaim(
+    content: readonly ContentBlock[],
+    isCurrentMessage: boolean,
+): HistoricalAssistantClaim | undefined {
+    if (!isCurrentMessage) return undefined
+    const text = content
+        .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+        .map(block => block.text)
+        .join('\n')
+        .trim()
+    if (text === '') return undefined
+    return { kind: 'assistant-claim', role: 'fact', text }
+}
+
 /**
  * 从一次会话与待执行动作冻结出审查者输入。
  * @param agent - 其持久表面与请求头为该调用提供授权的 agent。
  * @param exec - 不可变的待执行动作。
  * @param cwd - 会话当前工作目录。
  * @param shown - 该会话此前审查已展示的 schema。
- * @returns 精确的路由、环境，以及以待审调用结尾的历史。
+ * @returns 精确的环境，以及以待审调用结尾的历史。
  */
 export function snapshotAutoReview(
     agent: Agent,
@@ -195,8 +210,15 @@ export function snapshotAutoReview(
         const messageStep = stepIdentity(event.data)
         const isCurrentMessage = sameStep(messageStep, currentStep)
         let sawUnstartedSibling = false
+        // 模型在发起调用前写下的说明：它解释这次调用想做什么，排在本次调用的 tool-call 之前。
+        const claim = assistantClaim(event.data.message.content, isCurrentMessage)
+        let claimPushed = false
         for (const block of event.data.message.content) {
             if (block.type !== 'tool-call') continue
+            if (claim !== undefined && !claimPushed) {
+                history.push(claim)
+                claimPushed = true
+            }
             const key = scopedCallKey(messageStep, block.id)
             const isCurrentRoot = isCurrentMessage && block.id === exec.rootCallId
             if (isCurrentRoot && passedCurrentRoot) {
