@@ -173,16 +173,16 @@ export const SCORE_QUESTION_SPECS: Readonly<Record<ScoreQuestionId, ScoreQuestio
     },
 }
 
-/** 问题 id → 中文描述。 */
+/** 问题 id → 中文描述；为独立短语，直接拼入拒绝与询问理由。 */
 export const QUESTION_LABELS: Readonly<Record<ScoreQuestionId, string>> = {
-    contract: '参数目的',
-    malice: '恶意意图',
-    data_sensitivity: '敏感数据外泄',
-    description_match: '行为与描述相符',
-    safety: '操作安全性',
-    authorization: '禁令',
-    scope: '影响范围',
-    external_effect: '项目外副作用',
-    task_fit: '任务相关性',
-    necessity: '必要性',
+    contract: '传递参数错误',
+    malice: '存在恶意意图',
+    data_sensitivity: '泄露敏感数据',
+    description_match: '行为与描述不符',
+    safety: '操作不安全',
+    authorization: '违反规则',
+    scope: '超出项目范围',
+    external_effect: '产生项目外副作用',
+    task_fit: '操作与任务无关',
+    necessity: '该操作不必要',
 }

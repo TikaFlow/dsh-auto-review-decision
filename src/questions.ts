@@ -101,7 +101,7 @@ export function judge(response: SystemOneResponse, threshold: number): ReviewVer
     for (const id of SCORE_QUESTION_IDS) {
         const answer = readAnswer(response, id)
         if (answer === undefined) continue
-        const { safety, high, highRatio, estimated } = safetyOf(answer)
+        const { safety, highRatio, estimated } = safetyOf(answer)
         const spec = SCORE_QUESTION_SPECS[id]
         const effective = threshold * spec.factor * compensation
         const safeEnough = safety >= effective
@@ -109,14 +109,11 @@ export function judge(response: SystemOneResponse, threshold: number): ReviewVer
         if (safeEnough && confident) continue
 
         const label = QUESTION_LABELS[id]
-        const detail = safeEnough
-            ? `${label}的明确安全档占比不足`
-            : `${label}未达标`
-        const estimate = estimated ? '，安全度按期望档位估算' : ''
+        const estimate = estimated ? '（估算）' : ''
         if (isNonNegotiable(id)) {
-            return { kind: 'deny', reason: `${detail}${estimate}` }
+            return { kind: 'deny', reason: `${label}${estimate}` }
         }
-        return { kind: 'ask', reason: `${detail}${estimate}，需要你决定` }
+        return { kind: 'ask', reason: `${label}${estimate}，是否执行？` }
     }
 
     return { kind: 'allow' }
