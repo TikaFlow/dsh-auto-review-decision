@@ -38,7 +38,7 @@ function response(noul: number, scores: Record<string, unknown>): SystemOneRespo
 /** 全达标。 */
 const ALL_PASS = Object.fromEntries(SCORE_QUESTION_IDS.map(id => [id, score(4, { '4': 1 })]))
 
-test('问题表为 1 个 noul + 10 个 score，顺序与定义一致', () => {
+test('问题表为 1 个 noul + 9 个 score，顺序与定义一致', () => {
     const questions = decisionQuestions()
     assert.equal(questions[DECISION_QUESTION_ID].type, 'noul')
     const ids = Object.keys(questions).filter(id => id !== DECISION_QUESTION_ID)
@@ -90,7 +90,7 @@ test('noul 达到放行线也不短路辅助问题', () => {
 })
 
 test('放行段的辅助阈值放宽：中间段不达标而放行段达标', () => {
-    // necessity 因子 0.92：中间段阈值 0.765，放行段 0.707，安全度 0.72 被补偿翻转。
+    // necessity 因子 0.88：中间段阈值 0.732，放行段 0.676，安全度 0.72 被补偿翻转。
     const answer = score(4, { '0': 0.13, '1': 0.15, '2': 0.27, '3': 0.3, '4': 0.15 })
     const pass = judge(response(ALLOW_LINE, { ...ALL_PASS, necessity: answer }), THRESHOLD)
     assert.equal((pass as { kind: string }).kind, 'allow')
@@ -127,7 +127,7 @@ test('首个未达标者决定结果，不检查后续', () => {
     assert.equal((second as { reason: string }).reason.includes('操作不安全'), true)
 })
 
-test('有效阈值按因子下调：0.92 因子的问题阈值更松', () => {
+test('有效阈值按因子下调：0.88 因子的问题阈值更松', () => {
     const pass = judge(response(0.95, { ...ALL_PASS, necessity: score(3, { '2': 0.2, '3': 0.5, '4': 0.12 }) }), THRESHOLD)
     assert.equal((pass as { kind: string }).kind, 'allow')
 })
