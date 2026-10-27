@@ -29,7 +29,7 @@ const PROBE_REQUEST: SystemOneRequest = {
     questions: {
         balance: {
             type: 'noul',
-            instructions: 'Is the balance greater than 1000',
+            instructions: 'Is the balance greater than 1000?',
             criteria: { true: 'The balance exceeds 1000', false: 'The balance does not exceed 1000' },
         },
     },
