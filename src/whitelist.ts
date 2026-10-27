@@ -32,10 +32,12 @@ export const EXEMPT_TOOLS: ReadonlySet<string> = new Set([
     'exit_plan_mode',
     'web_fetch',
     'web_search',
+    'read',
+    'read_image',
 ])
 
 /** 半白名单：目标在工作区内才免审的工具名。 */
-export const PATH_EXEMPT_TOOLS: ReadonlySet<string> = new Set(['read', 'read_image'])
+export const PATH_EXEMPT_TOOLS: ReadonlySet<string> = new Set(['write', 'edit'])
 
 /** 半白名单工具声明目标路径的参数名。 */
 const PATH_ARGUMENT = 'file_path'
