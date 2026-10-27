@@ -8,6 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { } from '@deepseek-ai/dsh-agent-instructions'
 import type { } from '@deepseek-ai/dsh-subagent'
 import type { } from '@deepseek-ai/dsh-working-directory'
+import type { } from '@deepseek-ai/dsh-settings/types'
 import { readReviewConfig, setConfigInput, type ConfigInput } from './config.ts'
 import { applyFallback } from './fallback.ts'
 import { applyLifecycle } from './lifecycle.ts'
@@ -16,7 +17,7 @@ import { installProbeRoute } from './probe.ts'
 /** Cordis 插件名，供加载器诊断使用。 */
 export const name = 'auto-review-systemOne'
 /** Auto 可被声明前必须具备的完整宿主服务。 */
-export const inject = ['credentials', 'permissionPresets', 'sessions', 'tools', 'workingDirectory']
+export const inject = ['settings', 'credentials', 'permissionPresets', 'sessions', 'tools', 'workingDirectory']
 
 export { Config } from './config.ts'
 

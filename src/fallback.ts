@@ -10,7 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'
 import { getReviewConfig } from './config.ts'
 import { exitAutoSessions } from './session-exit.ts'
-import { FALLBACK_FAILURE_THRESHOLD, NOTICE_ROUTE } from './shared/config.ts'
+import { CONFIG_NS, FALLBACK_FAILURE_THRESHOLD, NOTICE_ROUTE } from './shared/config.ts'
 import { SystemOneCallError } from './systemone-client.ts'
 
 /** 计入降级的失败类别：决策端点不可用。 */
@@ -160,6 +160,8 @@ export function applyFallback(ctx: Context): void {
             guard?.reset()
         })
         yield stopReset
+        const stopConfig = ctx.on('settings/document-updated', (ns) => (ns === CONFIG_NS) && guard?.succeeded())
+        yield stopConfig
         yield () => {
             broadcaster?.close()
             broadcaster = undefined
