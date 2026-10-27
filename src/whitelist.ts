@@ -30,6 +30,8 @@ export const EXEMPT_TOOLS: ReadonlySet<string> = new Set([
     'create_goal',
     'update_goal',
     'exit_plan_mode',
+    'web_fetch',
+    'web_search',
 ])
 
 /** 半白名单：目标在工作区内才免审的工具名。 */
