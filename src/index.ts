@@ -11,6 +11,7 @@ import type { } from '@deepseek-ai/dsh-working-directory'
 import { readReviewConfig, setConfigInput, type ConfigInput } from './config.ts'
 import { applyFallback } from './fallback.ts'
 import { applyLifecycle } from './lifecycle.ts'
+import { installProbeRoute } from './probe.ts'
 
 /** Cordis 插件名，供加载器诊断使用。 */
 export const name = 'auto-review-systemOne'
@@ -27,6 +28,9 @@ export function apply(ctx: Context, config?: ConfigInput): void {
 
     // 降级设施：计数守卫、提示路由与 Auto 重选清零；卸载随本插件上下文回收
     applyFallback(ctx)
+
+    // 连通性测试路由；不计入降级，与审查分流
+    installProbeRoute(ctx)
 
     // 核心生命周期：注册 auto 预设，并审查工具调用
     applyLifecycle(ctx)

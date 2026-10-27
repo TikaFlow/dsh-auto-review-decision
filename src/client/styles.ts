@@ -45,6 +45,11 @@ const STYLE_TEXT = [
     '.dsh-ar-test:hover:not(:disabled){opacity:.88}',
     '.dsh-ar-test:disabled{opacity:.4;cursor:default}',
     '.dsh-ar-test:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,rgb(65,118,230)));outline-offset:1px}',
+    // 测试结果的独立一行：字号与宿主字段提示同规格，配色随三态变
+    '.dsh-ar-testNote{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#81858c)}',
+    '.dsh-ar-testNote-note{color:var(--dsw-alias-label-tertiary,#81858c)}',
+    '.dsh-ar-testNote-passed{color:var(--dsw-alias-state-success,#16a34a)}',
+    '.dsh-ar-testNote-failed{color:var(--dsw-alias-state-error,#e5484d)}',
     // 间距只由 .dsh-ar-item 提供
     '.dsh-ar-item div[class*="field"]{padding:0;border-top:none}',
     // 覆盖宿主 footer 只有 padding-top 的默认，保存按钮上方补分隔线

@@ -82,11 +82,25 @@ function PresetRow(props: {
  * @returns 卡片。
  */
 export function Card(props: CardProps) {
-    useEffect(() => { ensureStyles() }, [])
+    useEffect(() => { ensureStyles(); return props.resetTest }, [])
     const state = props.useCard(snapshot => snapshot)
     const { t } = props
     const [open, setOpen] = useState(props.defaultOpen ?? true)
     const disabled = !state.writable || state.saving
+
+    const test = state.test
+    const testNote = test === null
+        ? { tone: 'note', text: t('testHint') }
+        : test.kind === 'running'
+            ? { tone: 'note', text: t('testing') }
+            : test.kind === 'passed'
+                ? { tone: 'passed', text: t('testPassed') }
+                : { tone: 'failed', text: test.message }
+    const testNoteClass = {
+        note: 'dsh-ar-testNote dsh-ar-testNote-note',
+        passed: 'dsh-ar-testNote dsh-ar-testNote-passed',
+        failed: 'dsh-ar-testNote dsh-ar-testNote-failed',
+    }[testNote.tone]
 
     return (
         <div className={open ? 'dsh-ar-card dsh-ar-cardOpen' : 'dsh-ar-card'}>
@@ -176,12 +190,15 @@ export function Card(props: CardProps) {
                                         <button
                                             type="button"
                                             className="dsh-ar-test"
-                                            disabled={disabled || !state.testable}
+                                            disabled={disabled || !state.testable || test?.kind === 'running'}
                                             onClick={props.test}
                                         >
-                                            {t('test')}
+                                            {test?.kind === 'running' ? t('testing') : t('test')}
                                         </button>
                                     </div>
+                                </Row>
+                                <Row>
+                                    <p className={testNoteClass} role="status">{testNote.text}</p>
                                 </Row>
                             </div>
                             <p className="dsh-ar-group">{t('judgement')}</p>

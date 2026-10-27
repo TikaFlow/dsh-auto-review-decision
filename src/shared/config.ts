@@ -21,6 +21,12 @@ export const NOTICE_ROUTE = `/api/${CONFIG_NS}/notice`
 /** 同一路由的文档相对形式，供浏览器半直接使用。 */
 export const NOTICE_URL = NOTICE_ROUTE.slice(1)
 
+/** 连通性测试的路由（落在 `/api` 之下）。 */
+export const TEST_ROUTE = `/api/${CONFIG_NS}/test`
+
+/** 同一路由的文档相对形式，供浏览器半直接使用。 */
+export const TEST_URL = TEST_ROUTE.slice(1)
+
 /** 审查请求保留的最近历史条目数。 */
 export const HISTORY_WINDOW = 128
 

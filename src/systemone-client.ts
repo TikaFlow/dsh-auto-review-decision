@@ -203,7 +203,8 @@ export async function postDecision(
         throw new SystemOneCallError(FAILURE.config, '凭据未配置')
     }
     const body: Record<string, unknown> = { state: request.state, questions: request.questions }
-    if (request.model !== undefined && request.model !== '') body.model = request.model
+    const model = request.model || options.model
+    if (model) body.model = model
 
     const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
     const combined = AbortSignal.any([options.signal, timeout])

@@ -22,8 +22,62 @@ import {
     MAX_CONFIDENCE_THRESHOLD,
     MIN_CONFIDENCE_THRESHOLD,
     PRESET_OPTIONS,
+    REVIEW_TIMEOUT_MS,
+    TEST_URL,
     baseURLProblem,
 } from '../shared/config.ts'
+import { isRecord } from '../shared/tools.ts'
+
+/** 一次连通性测试的结果；成功不带细节。 */
+export type TestOutcome = {
+    readonly kind: 'passed'
+} | {
+    readonly kind: 'failed'
+    /** 失败原因，展示在结果行。 */
+    readonly message: string
+}
+
+/** 测试状态；null 为未测过。 */
+export type TestState = {
+    readonly kind: 'running'
+} | TestOutcome | null
+
+/** 卡片上一次测试的载体。 */
+interface EndpointProbe {
+    readonly baseURL: string
+    readonly fullURL: boolean
+    readonly model: string
+    readonly apiKey: string
+}
+
+/**
+ * 请求宿主按草稿配置发一次最小请求。
+ * 密钥只送到宿主的测试路由，由它代发决策请求，浏览器不直连。
+ * @returns 通过与否。
+ */
+async function probeEndpoint(probe: EndpointProbe): Promise<TestOutcome> {
+    try {
+        const response = await fetch(TEST_URL, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(probe),
+            signal: AbortSignal.timeout(REVIEW_TIMEOUT_MS),
+        })
+        if (!response.ok) {
+            const reason = (await response.text().catch(() => '')).trim()
+            return { kind: 'failed', message: reason === '' ? `auto-review: HTTP ${String(response.status)}` : reason }
+        }
+        const body: unknown = await response.json()
+        if (!isRecord(body)) return { kind: 'failed', message: 'auto-review: 连通性测试的响应不合法' }
+        if (body.ok !== true) {
+            return { kind: 'failed', message: typeof body.message === 'string' ? body.message : 'auto-review: 连通性测试失败' }
+        }
+        return { kind: 'passed' }
+    } catch (error: unknown) {
+        if (error instanceof Error && error.message !== '') return { kind: 'failed', message: `auto-review: ${error.message}` }
+        return { kind: 'failed', message: 'auto-review: 连通性测试失败' }
+    }
+}
 
 /** 阈值字段的 spec：空串清除，越界非法。 */
 const thresholdField: SettingsFieldSpec = {
@@ -105,6 +159,8 @@ export interface CardState extends SettingsFormShell {
     readonly apiKeyWritable: boolean
     /** 三个必填值（基址、模型、密钥）是否齐备，含草稿。 */
     readonly testable: boolean
+    /** 连通性测试的状态。 */
+    readonly test: TestState
 }
 
 /** 卡片从注册侧注入的面。 */
@@ -119,6 +175,8 @@ export interface CardFace extends SettingsFormActions {
     readonly setNotify: (value: boolean) => void
     /** 连通性测试。 */
     readonly test: () => void
+    /** 作废上次结果；卡片卸载时调用。 */
+    readonly resetTest: () => void
 }
 
 /** 凭据状态。 */
@@ -135,6 +193,7 @@ export class CardController {
     private readonly store: SnapshotStore<CardState>
     private readonly disposers: (() => void)[] = []
     private credential: CredentialState = { configured: false, writable: true }
+    private outcome: TestState = null
 
     /**
      * @param ctx - 浏览器插件上下文，其 `remote.credentials` 命名空间应答凭据读写。
@@ -180,6 +239,7 @@ export class CardController {
             testable: baseURL.text.trim() !== ''
                 && model.text.trim() !== ''
                 && (apiKey.text.trim() !== '' || this.credential.configured),
+            test: this.outcome,
         }
     }
 
@@ -216,19 +276,40 @@ export class CardController {
         const actions = this.form.actions()
         return {
             hooks: { card: this.store },
-            edit: actions.edit,
-            resetField: actions.resetField,
+            edit: (field, text) => { this.clearOutcome(); actions.edit(field, text) },
+            resetField: (field) => { this.clearOutcome(); actions.resetField(field) },
             save: actions.save,
             discard: actions.discard,
             setPreset: (field, value) => { actions.edit(field, value) },
-            setFullURL: (value) => { actions.edit('fullURL', String(value)) },
+            setFullURL: (value) => { this.clearOutcome(); actions.edit('fullURL', String(value)) },
             setNotify: (value) => { actions.edit('notifyOnFallback', String(value)) },
-            test: () => { this.test() },
+            test: () => { void this.runTest() },
+            resetTest: () => { this.clearOutcome() },
         }
     }
 
-    /** 连通性测试；逻辑待接入 SystemOne 探活。 */
-    test(): void { }
+    /** 作废上次结果：改了配置，旧结论不再对应当前输入。 */
+    private clearOutcome(): void {
+        if (this.outcome === null) return
+        this.outcome = null
+        this.publish()
+    }
+
+    /** 连通性测试：把当前草稿配置交给宿主发一次最小请求。 */
+    private async runTest(): Promise<void> {
+        const state = this.store.getSnapshot()
+        if (state.baseURL.text.trim() === '') return
+        this.outcome = { kind: 'running' }
+        this.publish()
+        const outcome = await probeEndpoint({
+            baseURL: state.baseURL.text.trim(),
+            fullURL: state.fullURL,
+            model: state.model.text.trim(),
+            apiKey: state.apiKey.text.trim(),
+        })
+        this.outcome = outcome
+        this.publish()
+    }
 
     /** 释放订阅。 */
     dispose(): void {
