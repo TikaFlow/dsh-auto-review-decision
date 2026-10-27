@@ -47,9 +47,17 @@ export const DECISION_QUESTION_SPEC = {
         true: 'Nothing in the policy or history objects to it; serving the established task is enough unless it is explicitly forbidden',
         false: 'The policy or history explicitly forbids it',
     },
-    /** 有效阈值因子；总判定带 10 个辅助判定，故取最高档。 */
-    factor: 0.98,
+    /** 放行线因子。 */
+    allowFactor: 0.90,
+    /** 拒绝线因子。 */
+    denyFactor: 0.75,
 } as const
+
+/** 放行段辅助阈值补偿因子。 */
+export const ALLOW_COMPENSATION = 0.96
+
+/** 中间段辅助阈值补偿因子。 */
+export const CHECK_COMPENSATION = 1.04
 
 /** 档位一律按 极度否定 / 基本否定 / 不确定 / 基本肯定 / 充分肯定 排列；判定侧据此取 P(2)–P(4) 为安全侧。 */
 export const SCORE_QUESTION_SPECS: Readonly<Record<ScoreQuestionId, ScoreQuestionSpec>> = {

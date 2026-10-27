@@ -1,14 +1,25 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { judge, decisionQuestions, safetyOf, type ReviewVerdict } from '../src/questions.ts'
-import { DECISION_QUESTION_ID, DECISION_QUESTION_SPEC, SCORE_QUESTION_IDS } from '../src/shared/questions.ts'
+import {
+    ALLOW_COMPENSATION,
+    CHECK_COMPENSATION,
+    DECISION_QUESTION_ID,
+    DECISION_QUESTION_SPEC,
+    SCORE_QUESTION_IDS,
+} from '../src/shared/questions.ts'
 import { DEFAULT_CONFIG, SCORE_LEVELS, SAFE_LEVEL_START } from '../src/shared/config.ts'
 import type { SystemOneResponse } from '../src/systemone.ts'
 
 /** 基准阈值。 */
 const THRESHOLD = DEFAULT_CONFIG.confidenceThreshold
 
-/** 构造一条 score 答案。 */
+/** 拒绝线。 */
+const DENY_LINE = THRESHOLD * DECISION_QUESTION_SPEC.denyFactor
+
+/** 放行线。 */
+const ALLOW_LINE = THRESHOLD * DECISION_QUESTION_SPEC.allowFactor
+
 function score(value: number, probabilities?: Record<string, number>) {
     return { type: 'score', score: value, ...(probabilities === undefined ? {} : { probabilities }) }
 }
@@ -24,7 +35,7 @@ function response(noul: number, scores: Record<string, unknown>): SystemOneRespo
     return { model: 'm', answers } as unknown as SystemOneResponse
 }
 
-/** 全达标：每个 score 落在最高档。 */
+/** 全达标。 */
 const ALL_PASS = Object.fromEntries(SCORE_QUESTION_IDS.map(id => [id, score(4, { '4': 1 })]))
 
 test('问题表为 1 个 noul + 10 个 score，顺序与定义一致', () => {
@@ -36,7 +47,6 @@ test('问题表为 1 个 noul + 10 个 score，顺序与定义一致', () => {
         const question = questions[id]
         assert.equal(question.type, 'score')
         assert.equal(typeof question.instructions, 'string')
-        // 每个 score 问题必须声明 SCORE_LEVELS 个档位，解析才能按该档数取值
         const criteria = question.criteria
         assert.ok(Array.isArray(criteria), `${id} 缺少 criteria`)
         assert.equal(criteria.length, SCORE_LEVELS, `${id} 档位数应为 ${SCORE_LEVELS}`)
@@ -60,12 +70,39 @@ test('基准阈值为 0.8', () => {
     assert.equal(DEFAULT_CONFIG.confidenceThreshold, 0.8)
 })
 
-test('noul 未达阈值则拒绝', () => {
-    // 总判定有效阈值为 基准 × 0.98
-    const decisionThreshold = THRESHOLD * DECISION_QUESTION_SPEC.factor
-    const verdict = judge(response(decisionThreshold - 0.01, ALL_PASS), THRESHOLD)
+test('noul 低于拒绝线则直接拒绝', () => {
+    const verdict = judge(response(DENY_LINE - 0.01, ALL_PASS), THRESHOLD)
     assert.equal(verdict.kind, 'deny')
     assert.ok((verdict as { reason: string }).reason.includes('未通过安全审查'))
+})
+
+test('noul 落在拒绝线与放行线之间时仍检查辅助问题', () => {
+    const mid = (DENY_LINE + ALLOW_LINE) / 2
+    assert.deepEqual(judge(response(mid, ALL_PASS), THRESHOLD) as unknown, { kind: 'allow' })
+    const blocked = judge(response(mid, { ...ALL_PASS, malice: score(0, { '0': 1 }) }), THRESHOLD)
+    assert.equal(blocked.kind, 'deny')
+})
+
+test('noul 达到放行线也不短路辅助问题', () => {
+    const verdict = judge(response(ALLOW_LINE + 0.01, { ...ALL_PASS, malice: score(0, { '0': 1 }) }), THRESHOLD)
+    assert.equal(verdict.kind, 'deny')
+    assert.ok((verdict as { reason: string }).reason.includes('恶意意图'))
+})
+
+test('放行段的辅助阈值放宽：中间段不达标而放行段达标', () => {
+    // necessity 因子 0.92：中间段阈值 0.765，放行段 0.707，安全度 0.72 被补偿翻转。
+    const answer = score(4, { '0': 0.13, '1': 0.15, '2': 0.27, '3': 0.3, '4': 0.15 })
+    const pass = judge(response(ALLOW_LINE, { ...ALL_PASS, necessity: answer }), THRESHOLD)
+    assert.equal((pass as { kind: string }).kind, 'allow')
+    const check = judge(response((DENY_LINE + ALLOW_LINE) / 2, { ...ALL_PASS, necessity: answer }), THRESHOLD)
+    assert.equal((check as { kind: string }).kind, 'ask')
+})
+
+test('放行线与拒绝线分别取 0.90 与 0.75', () => {
+    assert.equal(DECISION_QUESTION_SPEC.allowFactor, 0.9)
+    assert.equal(DECISION_QUESTION_SPEC.denyFactor, 0.75)
+    assert.equal(ALLOW_COMPENSATION, 0.96)
+    assert.equal(CHECK_COMPENSATION, 1.04)
 })
 
 test('不可商量未达标则拒绝', () => {
@@ -86,13 +123,11 @@ test('首个未达标者决定结果，不检查后续', () => {
     // malice 与 safety 都不达标，但 malice 在前：拒绝优先
     const first = judge(response(0.95, { ...ALL_PASS, malice: score(0, { '0': 1 }), safety: score(0, { '0': 1 }) }), THRESHOLD)
     assert.equal((first as { reason: string }).reason.includes('恶意意图'), true, 'malice 决定结果')
-    // 只有 safety 不达标时才是询问
     const second = judge(response(0.95, { ...ALL_PASS, safety: score(0, { '0': 1 }) }), THRESHOLD)
     assert.equal((second as { reason: string }).reason.includes('操作安全性'), true)
 })
 
 test('有效阈值按因子下调：0.92 因子的问题阈值更松', () => {
-    // necessity 因子 0.92 → 有效阈值 0.736；安全度 0.75 达标
     const pass = judge(response(0.95, { ...ALL_PASS, necessity: score(3, { '2': 0.2, '3': 0.5, '4': 0.12 }) }), THRESHOLD)
     assert.equal((pass as { kind: string }).kind, 'allow')
 })
@@ -100,7 +135,6 @@ test('有效阈值按因子下调：0.92 因子的问题阈值更松', () => {
 test('安全度取 probabilities 中安全档位之和', () => {
     const { safety, estimated } = safetyOf(score(4, { '0': 0.1, '1': 0.2, '2': 0.3, '3': 0.35, '4': 0.05 }))
     assert.equal(estimated, false)
-    // 档位 2 起：0.3 + 0.35 + 0.05
     assert.ok(Math.abs(safety - 0.7) < 1e-9)
     assert.ok(safety >= SAFE_LEVEL_START / SCORE_LEVELS)
 })
@@ -121,8 +155,6 @@ test('概率总和非空但安全档位缺失时按 0 处理', () => {
 })
 
 test('安全度达标但明确安全档在安全侧中的占比不足时不放行', () => {
-    // 安全侧 P(2)=0.9、P(3)=0.08、P(4)=0.02 → 安全度 1.00 达标，
-    // 但 (P(3)+P(4))/(P(2)+P(3)+P(4)) = 0.10，不足 60%
     const verdict = judge(response(0.95, {
         ...ALL_PASS,
         safety: score(4, { '0': 0, '1': 0, '2': 0.9, '3': 0.08, '4': 0.02 }),
@@ -130,7 +162,7 @@ test('安全度达标但明确安全档在安全侧中的占比不足时不放�
     assert.equal(verdict.kind, 'ask')
     const reason = (verdict as { reason: string }).reason
     assert.ok(reason.includes('明确安全档占比不足'))
-    })
+})
 
 test('不可商量问题的明确安全档占比不足直接拒绝', () => {
     const verdict = judge(response(0.95, {
@@ -142,7 +174,6 @@ test('不可商量问题的明确安全档占比不足直接拒绝', () => {
 })
 
 test('明确安全档占比恰为 60% 时不放行（需高于）', () => {
-    // P(2)=0.4、P(3)=0.3、P(4)=0.3 → 占比 0.6/1.0 = 0.6
     const verdict = judge(response(0.95, {
         ...ALL_PASS,
         safety: score(4, { '2': 0.4, '3': 0.3, '4': 0.3 }),
@@ -151,7 +182,6 @@ test('明确安全档占比恰为 60% 时不放行（需高于）', () => {
 })
 
 test('安全侧之外的低档概率不进入占比分母', () => {
-    // P(0)=0.9、P(2)=0.4、P(3)=0.3、P(4)=0.3 → 安全侧总量 1.0，占比 0.6
     const { safety, high, highRatio } = safetyOf(score(4, { '0': 0.9, '1': 0, '2': 0.4, '3': 0.3, '4': 0.3 }))
     assert.ok(Math.abs(safety - 1) < 1e-9)
     assert.ok(Math.abs(high - 0.6) < 1e-9)

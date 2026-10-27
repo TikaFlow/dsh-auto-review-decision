@@ -1,11 +1,13 @@
 /**
- * 审查问题表与判定规则：由 SystemOne 的答案得出放行、拒绝或询问。
+ * 审查问题表与判定规则。
  *
  * @module dsh-auto-review-systemOne/questions
  */
 
 import { HIGH_LEVEL_START, MIN_HIGH_RATIO, SAFE_LEVEL_START, SCORE_LEVELS } from './shared/config.ts'
 import {
+    ALLOW_COMPENSATION,
+    CHECK_COMPENSATION,
     DECISION_QUESTION_ID,
     DECISION_QUESTION_SPEC,
     SCORE_QUESTION_IDS,
@@ -15,13 +17,11 @@ import {
 } from './shared/questions.ts'
 import type { SystemOneQuestions, SystemOneResponse } from './systemone.ts'
 
-/** 一次审查的结论。 */
 export type ReviewVerdict =
     | { readonly kind: 'allow' }
     | { readonly kind: 'deny'; readonly reason: string }
     | { readonly kind: 'ask'; readonly reason: string }
 
-/** 构造本插件的问题表。 */
 export function decisionQuestions(): SystemOneQuestions {
     return {
         [DECISION_QUESTION_ID]: {
@@ -46,19 +46,17 @@ function readAnswer(response: SystemOneResponse, id: string): Record<string, unk
     return typeof answer === 'object' && answer !== null ? answer as unknown as Record<string, unknown> : undefined
 }
 
-/** 一条 score 答案的安全度指标。 */
 export interface SafetyMetrics {
-    /** 安全侧累积概率：P(2)+P(3)+P(4)。 */
+    /** 安全侧累积概率。 */
     readonly safety: number
-    /** 明确安全档（P(3)+P(4)）。 */
+    /** 明确安全档的概率。 */
     readonly high: number
-    /** 明确安全档在安全侧中的占比。 */
+    /** high 在安全侧中的占比。 */
     readonly highRatio: number
-    /** 是否为按期望档位估算的路径。 */
+    /** 无 probabilities 时按期望档位换算。 */
     readonly estimated: boolean
 }
 
-/** 计算一条 score 答案的安全度指标：优先取 probabilities，缺失时用期望档位换算。 */
 export function safetyOf(answer: Record<string, unknown>): SafetyMetrics {
     const probabilities = answer.probabilities
     if (typeof probabilities === 'object' && probabilities !== null) {
@@ -84,8 +82,7 @@ export function safetyOf(answer: Record<string, unknown>): SafetyMetrics {
 }
 
 /**
- * 按判定规则得出结论：noul 未达阈值 → 拒绝；问题表首个未达标者决定结果
- * （不可商量→拒绝，可商量→询问）；全部通过 → 放行。
+ * 按判定规则得出结论。
  * @param response - 已通过响应校验的结果。
  * @param threshold - 基准置信度阈值。
  */
@@ -93,19 +90,21 @@ export function judge(response: SystemOneResponse, threshold: number): ReviewVer
     const decision = readAnswer(response, DECISION_QUESTION_ID)
     const noul = decision?.noul
     const probability = typeof noul === 'number' && Number.isFinite(noul) ? noul : 0
-    const decisionThreshold = threshold * DECISION_QUESTION_SPEC.factor
-    if (probability < decisionThreshold) {
+    if (probability < threshold * DECISION_QUESTION_SPEC.denyFactor) {
         return { kind: 'deny', reason: '该调用未通过安全审查' }
     }
+    // 只有拒绝可短路。
+    const compensation = probability >= threshold * DECISION_QUESTION_SPEC.allowFactor
+        ? ALLOW_COMPENSATION
+        : CHECK_COMPENSATION
 
     for (const id of SCORE_QUESTION_IDS) {
         const answer = readAnswer(response, id)
         if (answer === undefined) continue
         const { safety, high, highRatio, estimated } = safetyOf(answer)
         const spec = SCORE_QUESTION_SPECS[id]
-        const effective = threshold * spec.factor
+        const effective = threshold * spec.factor * compensation
         const safeEnough = safety >= effective
-        // 安全度达标还不够：明确安全档占比过低说明判定多半压在「不确定」档上。
         const confident = highRatio > MIN_HIGH_RATIO
         if (safeEnough && confident) continue
 
