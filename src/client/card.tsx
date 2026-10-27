@@ -178,7 +178,7 @@ export function Card(props: CardProps) {
                                         hint={t('modelHint')}
                                         overriddenLabel={t('overridden')}
                                         resetLabel={t('reset')}
-                                        invalidLabel={t('invalidModel')}
+                                        invalidLabel=''
                                         disabled={disabled}
                                         {...state.model}
                                         onEdit={text => { props.edit('model', text) }}

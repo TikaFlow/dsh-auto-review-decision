@@ -235,9 +235,7 @@ export class CardController {
             apiKey,
             apiKeyConfigured: this.credential.configured,
             apiKeyWritable: this.credential.writable,
-            // 三项齐备即可测试：密钥以草稿文本或已存值满足其一。
             testable: baseURL.text.trim() !== ''
-                && model.text.trim() !== ''
                 && (apiKey.text.trim() !== '' || this.credential.configured),
             test: this.outcome,
         }

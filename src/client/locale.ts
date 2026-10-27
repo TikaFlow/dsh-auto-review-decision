@@ -46,7 +46,6 @@ const en = {
     invalidNumber: 'Enter a number in range.',
     invalidURL: 'Enter an http(s) URL without /systemone.',
     invalidURLFull: 'Enter a complete http(s) URL.',
-    invalidModel: 'Enter a model name.',
 }
 
 /** 中文文案。 */
@@ -89,7 +88,6 @@ const zh = {
     invalidNumber: '请输入范围内的数字。',
     invalidURL: '请输入不含 /systemone 的 http(s) 地址。',
     invalidURLFull: '请输入完整的 http(s) 地址。',
-    invalidModel: '请输入模型名。',
 } satisfies typeof en
 
 /** 文案表。 */
