@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import { EXEMPT_TOOLS, PATH_EXEMPT_TOOLS, whitelistVerdict } from '../src/whitelist.ts'
+import { EXEMPT_TOOLS, PATH_EXEMPT_TOOLS, PRESET_EXEMPT_TOOLS, whitelistVerdict } from '../src/whitelist.ts'
 
 /** 会话工作区根。 */
 const CWD = process.platform === 'win32' ? 'C:\\work' : '/work'
@@ -30,8 +30,25 @@ test('完全免审工具直接放行', async () => {
 })
 
 test('白名单外工具一律送审', async () => {
-    for (const name of ['pwsh', 'job_kill', 'send_message', 'interrupt_agent']) {
+    for (const name of ['pwsh', 'terminal_send', 'mcp__keen__search_web_pages', 'working_directory']) {
         const verdict = await whitelistVerdict(fakeFs(new Set()), exec(name, {}), CWD, new AbortController().signal)
+        assert.equal(verdict, undefined, name)
+    }
+})
+
+test('子级预设非无限制的委派免审', async () => {
+    for (const name of PRESET_EXEMPT_TOOLS) {
+        for (const args of [{}, { prompt: 'x' }, { agent_preset: 'read-only' }, { agent_preset: 'workspace-write' }]) {
+            const verdict = await whitelistVerdict(fakeFs(new Set()), exec(name, args), CWD, new AbortController().signal)
+            assert.deepEqual(verdict, { kind: 'allow' }, `${name} ${JSON.stringify(args)}`)
+        }
+    }
+})
+
+test('子级预设为无限制的委派仍送审', async () => {
+    for (const name of PRESET_EXEMPT_TOOLS) {
+        const verdict = await whitelistVerdict(
+            fakeFs(new Set()), exec(name, { agent_preset: 'danger-full-access' }), CWD, new AbortController().signal)
         assert.equal(verdict, undefined, name)
     }
 })

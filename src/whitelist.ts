@@ -34,10 +34,24 @@ export const EXEMPT_TOOLS: ReadonlySet<string> = new Set([
     'web_search',
     'read',
     'read_image',
+    'send_message',
+    'interrupt_agent',
+    'job_kill',
+    'terminal_open',
+    'terminal_close',
 ])
 
 /** 半白名单：目标在工作区内才免审的工具名。 */
 export const PATH_EXEMPT_TOOLS: ReadonlySet<string> = new Set(['write', 'edit'])
+
+/** 半白名单：子级权限预设未升到无限制时才免审的委派工具名。 */
+export const PRESET_EXEMPT_TOOLS: ReadonlySet<string> = new Set(['subagent', 'subagent_fork', 'workflow'])
+
+/** 该参数指定子级权限预设；只有无限制的那一种会摆脱审查。 */
+const PRESET_ARGUMENT = 'agent_preset'
+
+/** 无限制预设：子级在该预设下不再继承审查闸门。 */
+const UNREVIEWED_PRESET = 'danger-full-access'
 
 /** 半白名单工具声明目标路径的参数名。 */
 const PATH_ARGUMENT = 'file_path'
@@ -62,6 +76,11 @@ export async function whitelistVerdict(
     signal: AbortSignal,
 ): Promise<ReviewVerdict | undefined> {
     if (EXEMPT_TOOLS.has(exec.name)) return { kind: 'allow' }
+    if (PRESET_EXEMPT_TOOLS.has(exec.name)) {
+        const args = exec.arguments
+        const preset = isRecord(args) ? args[PRESET_ARGUMENT] : undefined
+        return preset === UNREVIEWED_PRESET ? undefined : { kind: 'allow' }
+    }
     if (!PATH_EXEMPT_TOOLS.has(exec.name)) return undefined
 
     const args = exec.arguments
