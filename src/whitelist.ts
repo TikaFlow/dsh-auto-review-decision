@@ -41,27 +41,54 @@ export const EXEMPT_TOOLS: ReadonlySet<string> = new Set([
     'terminal_close',
 ])
 
-/** 半白名单：目标在工作区内才免审的工具名。 */
-export const PATH_EXEMPT_TOOLS: ReadonlySet<string> = new Set(['write', 'edit'])
-
-/** 半白名单：子级权限预设未升到无限制时才免审的委派工具名。 */
-export const PRESET_EXEMPT_TOOLS: ReadonlySet<string> = new Set(['subagent', 'subagent_fork', 'workflow'])
-
-/** 该参数指定子级权限预设；只有无限制的那一种会摆脱审查。 */
-const PRESET_ARGUMENT = 'agent_preset'
-
-/** 无限制预设：子级在该预设下不再继承审查闸门。 */
-const UNREVIEWED_PRESET = 'danger-full-access'
-
-/** 半白名单工具声明目标路径的参数名。 */
-const PATH_ARGUMENT = 'file_path'
-
 /** 白名单判定所需的文件系统能力（宿主 `ctx.fs` 的结构化投影）。 */
 interface PathFence {
     /** 把路径解析为稳定目标；相对路径按 `opts.cwd` 解析。 */
     resolve(path: string, opts?: { cwd?: string; signal?: AbortSignal }): Promise<unknown>
     /** 判断 `child` 是否就是 `parent` 或其后代，按规范化路径比较。 */
     contains(parent: unknown, child: unknown): boolean
+}
+
+/** 取一个字符串参数 */
+function stringArg(exec: ToolExecution, key: string): string | undefined {
+    const value = isRecord(exec.arguments) ? exec.arguments[key] : undefined
+    return typeof value === 'string' ? value : undefined
+}
+
+interface Validator {
+    (ctx: Context, exec: ToolExecution, cwd: string, signal: AbortSignal): Promise<boolean>
+}
+
+const pathValidator: Validator = async (ctx, exec, cwd, signal) => {
+    const requested = stringArg(exec, 'file_path')
+    if (!requested) return false
+    const fs = ctx.get('fs') as PathFence | undefined
+    if (!fs) return false
+    try {
+        // 解析跟随符号链接
+        const root = await fs.resolve(cwd, { signal })
+        const target = await fs.resolve(requested, { cwd, signal })
+        if (fs.contains(root, target)) return true
+    } catch {
+    }
+    return false
+}
+
+const cdValidator: Validator = async (_ctx, exec) => {
+    return !stringArg(exec, 'cd')
+}
+
+const subagentValidator: Validator = async (_ctx, exec) => {
+    return stringArg(exec, 'agent_preset') !== 'danger-full-access'
+}
+
+const halfExemptDict: Record<string, Validator> = {
+    write: pathValidator,
+    edit: pathValidator,
+    working_directory: cdValidator,
+    subagent: subagentValidator,
+    subagent_fork: subagentValidator,
+    workflow: subagentValidator,
 }
 
 /**
@@ -75,26 +102,9 @@ export async function whitelistVerdict(
     cwd: string,
     signal: AbortSignal,
 ): Promise<ReviewVerdict | undefined> {
+    // if (用户白名单.has(exec.name)) return { kind: 'allow' } // TODO
     if (EXEMPT_TOOLS.has(exec.name)) return { kind: 'allow' }
-    if (PRESET_EXEMPT_TOOLS.has(exec.name)) {
-        const args = exec.arguments
-        const preset = isRecord(args) ? args[PRESET_ARGUMENT] : undefined
-        return preset === UNREVIEWED_PRESET ? undefined : { kind: 'allow' }
-    }
-    if (!PATH_EXEMPT_TOOLS.has(exec.name)) return undefined
 
-    const args = exec.arguments
-    const requested = isRecord(args) ? args[PATH_ARGUMENT] : undefined
-    if (typeof requested !== 'string' || requested === '') return undefined
-    const fs = ctx.get('fs') as PathFence | undefined
-    if (fs === undefined) return undefined
-    try {
-        // 解析跟随符号链接：工作区内的链接指向外部时，目标不再落在根内。
-        const root = await fs.resolve(cwd, { signal })
-        const target = await fs.resolve(requested, { cwd, signal })
-        return fs.contains(root, target) ? { kind: 'allow' } : undefined
-    } catch {
-        // 目标不存在或无法解析时退回审查，保持失败即不放行。
-        return undefined
-    }
+    const validator = halfExemptDict[exec.name]
+    if (validator && await validator(ctx, exec, cwd, signal)) return { kind: 'allow' }
 }
