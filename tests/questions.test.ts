@@ -2,8 +2,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { judge, decisionQuestions, safetyOf, type ReviewVerdict } from '../src/questions.ts'
 import {
-    ALLOW_COMPENSATION,
-    CHECK_COMPENSATION,
     DECISION_QUESTION_ID,
     DECISION_QUESTION_SPEC,
     SCORE_QUESTION_IDS,
@@ -90,7 +88,7 @@ test('noul 达到放行线也不短路辅助问题', () => {
 })
 
 test('放行段的辅助阈值放宽：中间段不达标而放行段达标', () => {
-    // necessity 因子 0.84：中间段阈值 0.701，放行段 0.645，安全度 0.68 被补偿翻转。
+    // necessity 因子 0.84：中间段阈值 0.685，放行段 0.659，安全度 0.68 被补偿翻转。
     const answer = score(4, { '0': 0.12, '1': 0.2, '2': 0.18, '3': 0.4, '4': 0.1 })
     const pass = judge(response(ALLOW_LINE, { ...ALL_PASS, necessity: answer }), THRESHOLD)
     assert.equal((pass as { kind: string }).kind, 'allow')
@@ -98,20 +96,20 @@ test('放行段的辅助阈值放宽：中间段不达标而放行段达标', ()
     assert.equal((check as { kind: string }).kind, 'ask')
 })
 
-test('放行线与拒绝线分别取 0.90 与 0.75', () => {
+test('放行线与拒绝线分别取 0.90 与 0.75，补偿因子取 0.98 与 1.02', () => {
     assert.equal(DECISION_QUESTION_SPEC.allowFactor, 0.9)
     assert.equal(DECISION_QUESTION_SPEC.denyFactor, 0.75)
-    assert.equal(ALLOW_COMPENSATION, 0.96)
-    assert.equal(CHECK_COMPENSATION, 1.04)
+    assert.equal(DECISION_QUESTION_SPEC.allowCompensationFactor, 0.98)
+    assert.equal(DECISION_QUESTION_SPEC.checkCompensationFactor, 1.02)
 })
 
-test('不可商量未达标则拒绝', () => {
+test('重要问题低于拒绝线则直接拒绝', () => {
     const verdict = judge(response(0.95, { ...ALL_PASS, malice: score(0, { '0': 1 }) }), THRESHOLD)
     assert.equal(verdict.kind, 'deny')
     assert.ok((verdict as { reason: string }).reason.includes('存在恶意意图'))
 })
 
-test('可商量未达标则询问用户', () => {
+test('普通问题未达标则询问用户', () => {
     const verdict = judge(response(0.95, { ...ALL_PASS, description_match: score(0, { '0': 1 }) }), THRESHOLD)
     assert.equal(verdict.kind, 'ask')
     const reason = (verdict as { reason: string }).reason
@@ -164,13 +162,15 @@ test('安全度达标但明确安全档在安全侧中的占比不足时不放�
     assert.ok(reason.includes('行为与描述不符'))
 })
 
-test('不可商量问题的明确安全档占比不足直接拒绝', () => {
+test('重要问题占比不足但未低于拒绝线时询问用户', () => {
     const verdict = judge(response(0.95, {
         ...ALL_PASS,
         malice: score(4, { '2': 0.9, '3': 0.08, '4': 0.02 }),
     }), THRESHOLD)
-    assert.equal(verdict.kind, 'deny')
-    assert.ok((verdict as { reason: string }).reason.includes('存在恶意意图'))
+    assert.equal(verdict.kind, 'ask')
+    const reason = (verdict as { reason: string }).reason
+    assert.ok(reason.includes('存在恶意意图'))
+    assert.ok(reason.includes('是否执行？'))
 })
 
 test('明确安全档占比恰为 60% 时不放行（需高于）', () => {

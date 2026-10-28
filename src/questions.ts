@@ -6,14 +6,11 @@
 
 import { HIGH_LEVEL_START, MIN_HIGH_RATIO, SAFE_LEVEL_START, SCORE_LEVELS } from './shared/config.ts'
 import {
-    ALLOW_COMPENSATION,
-    CHECK_COMPENSATION,
     DECISION_QUESTION_ID,
     DECISION_QUESTION_SPEC,
     SCORE_QUESTION_IDS,
     SCORE_QUESTION_SPECS,
     QUESTION_LABELS,
-    isNonNegotiable,
 } from './shared/questions.ts'
 import type { SystemOneQuestions, SystemOneResponse } from './systemone.ts'
 
@@ -95,22 +92,22 @@ export function judge(response: SystemOneResponse, threshold: number): ReviewVer
     }
     // 只有拒绝可短路。
     const compensation = probability >= threshold * DECISION_QUESTION_SPEC.allowFactor
-        ? ALLOW_COMPENSATION
-        : CHECK_COMPENSATION
+        ? DECISION_QUESTION_SPEC.allowCompensationFactor
+        : DECISION_QUESTION_SPEC.checkCompensationFactor
 
     for (const id of SCORE_QUESTION_IDS) {
         const answer = readAnswer(response, id)
         if (answer === undefined) continue
         const { safety, highRatio, estimated } = safetyOf(answer)
         const spec = SCORE_QUESTION_SPECS[id]
-        const effective = threshold * spec.factor * compensation
+        const effective = threshold * spec.allowFactor * compensation
         const safeEnough = safety >= effective
         const confident = highRatio > MIN_HIGH_RATIO
         if (safeEnough && confident) continue
 
         const label = QUESTION_LABELS[id]
         const estimate = estimated ? '（估算）' : ''
-        if (isNonNegotiable(id)) {
+        if (spec.denyFactor && safety < threshold * spec.denyFactor * compensation) {
             return { kind: 'deny', reason: `${label}${estimate}` }
         }
         return { kind: 'ask', reason: `${label}${estimate}，是否执行？` }
