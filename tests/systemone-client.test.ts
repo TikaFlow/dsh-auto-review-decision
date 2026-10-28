@@ -105,7 +105,7 @@ test('信封 result 非对象时按顶层体处理', async () => {
 
 test('模型为空时不发送该字段', async () => {
     calls.length = 0
-    await postDecision(request(''), { ...BASE, fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })
+    await postDecision(request(''), { ...BASE, model: '', fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })
     assert.deepEqual(Object.keys(JSON.parse(String(calls[0]?.init.body))), ['state', 'questions'])
 })
 

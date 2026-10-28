@@ -90,8 +90,8 @@ test('noul 达到放行线也不短路辅助问题', () => {
 })
 
 test('放行段的辅助阈值放宽：中间段不达标而放行段达标', () => {
-    // necessity 因子 0.88：中间段阈值 0.732，放行段 0.676，安全度 0.72 被补偿翻转。
-    const answer = score(4, { '0': 0.13, '1': 0.15, '2': 0.27, '3': 0.3, '4': 0.15 })
+    // necessity 因子 0.84：中间段阈值 0.701，放行段 0.645，安全度 0.68 被补偿翻转。
+    const answer = score(4, { '0': 0.12, '1': 0.2, '2': 0.18, '3': 0.4, '4': 0.1 })
     const pass = judge(response(ALLOW_LINE, { ...ALL_PASS, necessity: answer }), THRESHOLD)
     assert.equal((pass as { kind: string }).kind, 'allow')
     const check = judge(response((DENY_LINE + ALLOW_LINE) / 2, { ...ALL_PASS, necessity: answer }), THRESHOLD)
@@ -112,10 +112,10 @@ test('不可商量未达标则拒绝', () => {
 })
 
 test('可商量未达标则询问用户', () => {
-    const verdict = judge(response(0.95, { ...ALL_PASS, safety: score(0, { '0': 1 }) }), THRESHOLD)
+    const verdict = judge(response(0.95, { ...ALL_PASS, description_match: score(0, { '0': 1 }) }), THRESHOLD)
     assert.equal(verdict.kind, 'ask')
     const reason = (verdict as { reason: string }).reason
-    assert.ok(reason.includes('操作不安全'))
+    assert.ok(reason.includes('行为与描述不符'))
     assert.ok(reason.includes('是否执行？'))
 })
 
@@ -127,7 +127,7 @@ test('首个未达标者决定结果，不检查后续', () => {
     assert.equal((second as { reason: string }).reason.includes('操作不安全'), true)
 })
 
-test('有效阈值按因子下调：0.88 因子的问题阈值更松', () => {
+test('有效阈值按因子下调：0.84 因子的问题阈值更松', () => {
     const pass = judge(response(0.95, { ...ALL_PASS, necessity: score(3, { '2': 0.2, '3': 0.5, '4': 0.12 }) }), THRESHOLD)
     assert.equal((pass as { kind: string }).kind, 'allow')
 })
@@ -144,7 +144,7 @@ test('缺失 probabilities 时用期望档位估算，且理由可识别', () =>
     assert.equal(estimated, true)
     assert.ok(Math.abs(safety - 3 / (SCORE_LEVELS - 1)) < 1e-9)
 
-    const verdict = judge(response(0.95, { ...ALL_PASS, safety: score(1) }), THRESHOLD)
+    const verdict = judge(response(0.95, { ...ALL_PASS, description_match: score(1) }), THRESHOLD)
     assert.equal(verdict.kind, 'ask')
     assert.ok((verdict as { reason: string }).reason.includes('（估算）'))
 })
@@ -157,11 +157,11 @@ test('概率总和非空但安全档位缺失时按 0 处理', () => {
 test('安全度达标但明确安全档在安全侧中的占比不足时不放行', () => {
     const verdict = judge(response(0.95, {
         ...ALL_PASS,
-        safety: score(4, { '0': 0, '1': 0, '2': 0.9, '3': 0.08, '4': 0.02 }),
+        description_match: score(4, { '0': 0, '1': 0, '2': 0.9, '3': 0.08, '4': 0.02 }),
     }), THRESHOLD)
     assert.equal(verdict.kind, 'ask')
     const reason = (verdict as { reason: string }).reason
-    assert.ok(reason.includes('操作不安全'))
+    assert.ok(reason.includes('行为与描述不符'))
 })
 
 test('不可商量问题的明确安全档占比不足直接拒绝', () => {
@@ -176,7 +176,7 @@ test('不可商量问题的明确安全档占比不足直接拒绝', () => {
 test('明确安全档占比恰为 60% 时不放行（需高于）', () => {
     const verdict = judge(response(0.95, {
         ...ALL_PASS,
-        safety: score(4, { '2': 0.4, '3': 0.3, '4': 0.3 }),
+        description_match: score(4, { '2': 0.4, '3': 0.3, '4': 0.3 }),
     }), THRESHOLD)
     assert.equal(verdict.kind, 'ask')
 })
@@ -207,7 +207,7 @@ test('三条路径的结论类型互斥', () => {
     for (const verdict of [
         judge(response(0.95, ALL_PASS), THRESHOLD),
         judge(response(0.1, ALL_PASS), THRESHOLD),
-        judge(response(0.95, { ...ALL_PASS, safety: score(0, { '0': 1 }) }), THRESHOLD),
+        judge(response(0.95, { ...ALL_PASS, description_match: score(0, { '0': 1 }) }), THRESHOLD),
     ] as ReviewVerdict[]) kinds.add(verdict.kind)
     assert.deepEqual([...kinds].sort(), ['allow', 'ask', 'deny'])
 })
