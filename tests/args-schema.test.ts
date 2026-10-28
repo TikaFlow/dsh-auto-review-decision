@@ -46,15 +46,15 @@ test('嵌套对象必填缺失', () => {
     assert.ok(issues.some(issue => issue.message.includes('path')))
 })
 
-test('参数不是对象', () => {
+test('参数不是对象时按声明类型判定', () => {
     const issues = validateArgs('ls', SCHEMA)
     assert.equal(issues.length, 1)
-    assert.ok(issues[0]?.message.includes('必须是对象'))
+    assert.ok(issues[0]?.message.includes('object'))
 })
 
-test('schema 非对象时直接判不符（本地预检收紧）', () => {
-    assert.ok(validateArgs({ command: 'ls' }, undefined).length === 1)
-    assert.ok(validateArgs({ command: 'ls' }, 'not-a-schema').length === 1)
+test('schema 非对象时无从确证违约，交模型侧兜底', () => {
+    assert.deepEqual(validateArgs({ command: 'ls' }, undefined), [])
+    assert.deepEqual(validateArgs({ command: 'ls' }, 'not-a-schema'), [])
 })
 
 test('多类型声明', () => {

@@ -89,14 +89,7 @@ function describe(value: unknown): string {
  */
 export function validateArgs(args: unknown, schema: unknown): readonly SchemaIssue[] {
     const issues: SchemaIssue[] = []
-    if (!isRecord(schema)) {
-        issues.push({ path: '', message: '工具参数定义必须是对象' })
-        return issues
-    }
-    if (!isRecord(args)) {
-        issues.push({ path: '', message: '调用参数必须是对象' })
-        return issues
-    }
+    if (!isRecord(schema)) return issues
     check(args, schema, '', issues)
     return issues
 }
