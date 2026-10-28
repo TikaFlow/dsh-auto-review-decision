@@ -83,6 +83,26 @@ test('基址尾部斜杠不产生重复斜杠', async () => {
     assert.equal(calls[0]?.url, 'https://example.com/v1/systemone')
 })
 
+test('网关 result 信封解包', async () => {
+    const result = await postDecision(request(), {
+        ...BASE,
+        fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({ result: OK_BODY, success: true, errors: [], messages: [] }), { status: 200 }))),
+    })
+    assert.equal(result.answers.allow.noul, 0.93)
+    assert.equal(result.answers.malice.score, 3.4)
+})
+
+test('信封 result 非对象时按顶层体处理', async () => {
+    await rejectsKind(
+        () => postDecision(request(), {
+            ...BASE,
+            fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({ result: null, success: false, errors: ['boom'], messages: [] }), { status: 200 }))),
+        }),
+        FAILURE.field,
+        '响应缺少 answers',
+    )
+})
+
 test('模型为空时不发送该字段', async () => {
     calls.length = 0
     await postDecision(request(''), { ...BASE, fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })

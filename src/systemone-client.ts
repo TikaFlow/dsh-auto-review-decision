@@ -241,7 +241,8 @@ export async function postDecision(
     if (!isRecord(parsed)) {
         throw new SystemOneCallError(FAILURE.parse, '决策响应不是对象')
     }
-    const result = parsed as unknown as SystemOneResponse
+    const payload = isRecord(parsed.result) ? parsed.result : parsed
+    const result = payload as unknown as SystemOneResponse
     validateDecisionResponse(request.questions, result)
     return result
 }

@@ -105,6 +105,7 @@ SystemOne（TypeSafe System One，即 Jev 协议）是**非对话、非流式**�
 - `noul` 的 `probabilities` 与 `confidence`：部分实现（如 vLLM）返回，TypeSafe 原生不返回。
 - `score` 的 `criteria`：多数实现要求至少 2 档，部分实现接受 1 档。
 - `choice` 的 `criteria`：部分实现允许直接传选项名数组，等价于各选项说明为 `null`。
+- 响应外层信封：部分网关实现把上述响应体整体包在 `result` 字段下（伴随 `success`、`errors`、`messages`）；客户端在 `result` 为对象记录时取其作为载荷。
 - 错误响应形状未统一，字段随实现而异。
 
 ## 参考
@@ -115,3 +116,4 @@ SystemOne（TypeSafe System One，即 Jev 协议）是**非对话、非流式**�
 - 阿里云百炼决策模型：<https://help.aliyun.com/en/model-studio/decision-model-api>
 - llama.cpp Decision Models：<https://huggingface.co/blog/ggml-org/decision-models-in-llamacpp>
 - TrueFoundry AI Gateway：<https://truefoundry.com/docs/ai-gateway/decisions>
+- Clef Flash：<https://developers.cloudflare.com/workers-ai/models/clef-flash/>
