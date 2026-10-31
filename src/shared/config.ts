@@ -27,10 +27,10 @@ export const TEST_ROUTE = `/api/${CONFIG_NS}/test`
 /** 同一路由的文档相对形式，供浏览器半直接使用。 */
 export const TEST_URL = TEST_ROUTE.slice(1)
 
-/** 审查请求保留的最近历史条目数。 */
+/** 审查请求保留的最近可丢弃历史条目数；权威角色不受此限。 */
 export const HISTORY_WINDOW = 128
 
-/** 审查请求的 history 字符预算；超出时从最旧一条开始丢弃。 */
+/** 审查请求中可丢弃历史的字符预算；超出时从最旧一条开始丢，权威角色不计入。 */
 export const HISTORY_CHAR_BUDGET = 48 * 1024
 
 /** 置信度阈值下限。 */

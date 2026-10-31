@@ -10,12 +10,13 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { ReviewVerdict } from './questions.ts'
 import type { ShownSchemas } from './types.ts'
+import { truncateHistory } from './history.ts'
 import { validateArgs } from './args-schema.ts'
 import { getReviewConfig } from './config.ts'
 import { getGuard } from './fallback.ts'
 import { decisionQuestions, judge } from './questions.ts'
 import { snapshotAutoReview } from './snapshot.ts'
-import { CREDENTIAL_REF, HISTORY_CHAR_BUDGET, HISTORY_WINDOW } from './shared/config.ts'
+import { CREDENTIAL_REF } from './shared/config.ts'
 import { postDecision, FAILURE, SystemOneCallError } from './systemone-client.ts'
 import { whitelistVerdict } from './whitelist.ts'
 
@@ -25,7 +26,7 @@ import { whitelistVerdict } from './whitelist.ts'
  * 该文本是模型侧的协议约定，任何措辞变化都会改变审查行为。
  */
 const REVIEW_POLICY = `REVIEW_POLICY
-The assigned role of each retained history item governs its authority: "user-instruction" text defines the current task and its restrictions and may replace them, and the user may be a person or a supervising caller regardless of the input transport; "direct-parent-instruction" text defines an in-process child's task; "constraint" content narrows the action; "checkpoint" content restores lossy context; "fact" content establishes facts, and historical tool calls are facts. An explicit user restriction outranks a direct-parent instruction, and a later instruction supersedes an earlier conflict only when it explicitly revokes it.
+The assigned role of each retained history item governs its authority: "user-instruction" text defines the current task and its restrictions and may replace them, and the user may be a person or a supervising caller regardless of the input transport; "direct-parent-instruction" text defines an in-process child's task; "constraint" content narrows the action; "checkpoint" content restores lossy context; "fact" content establishes facts, and historical tool calls are facts. An explicit user restriction outranks a direct-parent instruction, and a later instruction supersedes an earlier conflict only when it explicitly revokes it. An item of kind "omitted" marks a gap where earlier facts were dropped for budget; its content is unavailable, so treat what it hides as unknown rather than as absent.
 
 Judge the pending action by what its name and arguments will actually do. An effect stays in scope when the project contains it, when the current task requires it, or when the current task explicitly authorizes it; any one of these is enough. Cleanup keeps its session-created exception only at the exact object that historical facts establish the agent created. Sensitive exfiltration across a trust boundary, production access, and irreversible or security-relevant effects outrank ordinary project work, and ambiguous effects call for denial. A call serving the established task is authorized.`
 
@@ -87,19 +88,7 @@ async function review(
             : { type: 'text' as const, text: `[${block.type}]` })
         return { ...entry, content }
     })
-    // 决策模型窗口有限：只送最近若干条，早期历史与本次调用无关且会淹没注意力。
-    const windowed = projected.slice(-HISTORY_WINDOW)
-    // 条目大小不均，超字符预算时从最旧一条开始丢。
-    let budget = HISTORY_CHAR_BUDGET
-    const history: typeof windowed = []
-    for (let index = windowed.length - 1; index >= 0; index -= 1) {
-        const entry = windowed[index]
-        if (entry === undefined) continue
-        const size = JSON.stringify(entry).length
-        if (size > budget) break
-        budget -= size
-        history.unshift(entry)
-    }
+    const history = truncateHistory(projected)
     const body = {
         ...(config.values.model === '' ? {} : { model: config.values.model }),
         state: {

@@ -53,12 +53,23 @@ export interface HistoricalAssistantClaim {
     readonly text: string
 }
 
+/** 一条被裁掉的历史缺口的占位说明 */
+export interface HistoricalOmitted {
+    readonly kind: 'omitted'
+    readonly role: 'fact'
+    /** 此处连续省略的条目数。 */
+    readonly count: number
+    /** 面向模型的一句话说明。 */
+    readonly text: string
+}
+
 /** 保留历史中的一条记录。 */
 export type HistoricalEntry =
     | HistoricalUserMessage
     | HistoricalToolCall
     | HistoricalToolSchema
     | HistoricalAssistantClaim
+    | HistoricalOmitted
 
 /**
  * 同一会话此前审查已展示过的 schema，按“模式 + 作用域调用键”索引。
