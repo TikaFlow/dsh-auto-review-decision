@@ -5,6 +5,7 @@
  */
 
 import { REVIEW_TIMEOUT_MS, SCORE_LEVELS, decisionEndpoint } from './shared/config.ts'
+import { byteLength } from './shared/bytes.ts'
 import { isFiniteNumber, isRecord } from './shared/tools.ts'
 import type {
     SystemOneAnswer,
@@ -83,6 +84,8 @@ export interface DecisionCallOptions {
     readonly signal: AbortSignal
     /** 注入的 fetch，默认取全局实现。 */
     readonly fetchImpl?: typeof fetch
+    /** 观测出口：实际发送的请求体字节数在序列化后回填。 */
+    readonly metrics?: { bodyBytes: number }
 }
 
 /** 从非 200 的响应体里摘出简短摘要，不含响应原文。 */
@@ -205,6 +208,9 @@ export async function postDecision(
     const body: Record<string, unknown> = { state: request.state, questions: request.questions }
     const model = request.model || options.model
     if (model) body.model = model
+    // 与实际发送体同源计量，避免调用方二次序列化产生偏差。
+    const serialized = JSON.stringify(body)
+    if (options.metrics !== undefined) options.metrics.bodyBytes = byteLength(serialized)
 
     const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
     const combined = AbortSignal.any([options.signal, timeout])
@@ -217,7 +223,7 @@ export async function postDecision(
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${options.apiKey}`,
             },
-            body: JSON.stringify(body),
+            body: serialized,
             signal: combined,
         })
     } catch (error: unknown) {

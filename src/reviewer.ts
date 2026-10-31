@@ -11,12 +11,14 @@ import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { ReviewVerdict } from './questions.ts'
 import type { ShownSchemas } from './types.ts'
 import { truncateHistory } from './history.ts'
+import { maxBytes, observe } from './budget.ts'
 import { validateArgs } from './args-schema.ts'
 import { getReviewConfig } from './config.ts'
 import { getGuard } from './fallback.ts'
 import { decisionQuestions, judge } from './questions.ts'
 import { snapshotAutoReview } from './snapshot.ts'
 import { CREDENTIAL_REF } from './shared/config.ts'
+import { isFiniteNumber } from './shared/tools.ts'
 import { postDecision, FAILURE, SystemOneCallError } from './systemone-client.ts'
 import { whitelistVerdict } from './whitelist.ts'
 
@@ -88,7 +90,9 @@ async function review(
             : { type: 'text' as const, text: `[${block.type}]` })
         return { ...entry, content }
     })
-    const history = truncateHistory(projected)
+    // 端点或模型标识变化即重置预算账本，因子始终对应当前端点。
+    const signature = `${config.values.baseURL}|${String(config.values.fullURL)}|${config.values.model}`
+    const history = truncateHistory(projected, maxBytes(signature))
     const body = {
         ...(config.values.model === '' ? {} : { model: config.values.model }),
         state: {
@@ -102,12 +106,17 @@ async function review(
         },
         questions: decisionQuestions(),
     }
+    const metrics = { bodyBytes: 0 }
     const response = await postDecision(body, {
         baseURL: config.values.baseURL,
         fullURL: config.values.fullURL,
         model: config.values.model,
         apiKey: credential.value,
         signal,
+        metrics,
     })
+    // 只有拿到有效 token 数才观测：字节数与 token 数必须同源配对。
+    const inputTokens = response.usage?.input_tokens
+    if (isFiniteNumber(inputTokens)) observe(signature, metrics.bodyBytes, inputTokens)
     return judge(response, config.values.confidenceThreshold)
 }

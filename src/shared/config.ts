@@ -30,9 +30,6 @@ export const TEST_URL = TEST_ROUTE.slice(1)
 /** 审查请求保留的最近可丢弃历史条目数；权威角色不受此限。 */
 export const HISTORY_WINDOW = 128
 
-/** 审查请求中可丢弃历史的字符预算；超出时从最旧一条开始丢，权威角色不计入。 */
-export const HISTORY_CHAR_BUDGET = 48 * 1024
-
 /** 最近多少条历史条目（不含待审调用）按权威处理：不论角色，一律不裁剪。 */
 export const RECENT_KEEP = 10
 
