@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { truncateHistory } from '../src/history.ts'
-import { HISTORY_CHAR_BUDGET, HISTORY_WINDOW } from '../src/shared/config.ts'
+import { HISTORY_CHAR_BUDGET, HISTORY_WINDOW, RECENT_KEEP } from '../src/shared/config.ts'
 import type { HistoricalEntry, ReviewSourceRole } from '../src/types.ts'
 
 /** 一条带角色与文本的保留条目。 */
@@ -19,6 +19,11 @@ function bigCall(size: number): HistoricalEntry {
     return { kind: 'tool-call', role: 'fact', mode: 'native', name: 'read', arguments: 'x'.repeat(size) }
 }
 
+/** N 条各自接近半额预算的历史工具调用，合计必然超出字符预算。 */
+function expensiveFacts(count: number): HistoricalEntry[] {
+    return Array.from({ length: count }, () => bigCall(Math.floor(HISTORY_CHAR_BUDGET / 2)))
+}
+
 /** 条目的简短标识：占位显示为 omitted:数量，其余为 kind:role。 */
 function label(entry: HistoricalEntry): string {
     return entry.kind === 'omitted' ? `omitted:${String(entry.count)}` : `${entry.kind}:${entry.role}`
@@ -34,19 +39,69 @@ function manyFacts(count: number): HistoricalEntry[] {
     return Array.from({ length: count }, (_, index) => call(`f${String(index)}`))
 }
 
+/** 待审调用与它之前的若干条历史构成的保护区长度。 */
+const PROTECTED = RECENT_KEEP + 1
+
 test('未超限时原样返回，不插入占位', () => {
     const entries = [user('user-instruction', 'task'), call('a'), call('b')]
     assert.deepEqual(truncateHistory(entries), entries)
     assert.deepEqual(omittedCounts(truncateHistory(entries)), [])
 })
 
-test('窗口只统计可丢弃条目，权威角色不占名额', () => {
-    const entries = [user('user-instruction', 'task'), ...manyFacts(HISTORY_WINDOW + 6)]
+test('最近若干条历史与待审调用一律保留，不论角色', () => {
+    // 20 条超大 fact 会把字符预算吃光，但它们之后的 10 条 fact 与待审调用仍须全留。
+    const entries = [user('user-instruction', 'task'), ...expensiveFacts(20), ...manyFacts(RECENT_KEEP + 1)]
     const result = truncateHistory(entries)
-    // 指令仍在首位，其后是 5 条被折叠的缺口，再是最近 128 条 fact 与末条待审调用。
+    const tail = result.slice(-PROTECTED)
+    assert.equal(tail.length, PROTECTED)
+    assert.ok(tail.every(entry => entry.kind === 'tool-call'))
+    assert.equal(tail.at(-1)?.kind, 'tool-call')
+})
+
+test('保护区内被裁掉的是保护区外的旧 fact', () => {
+    const entries = [user('user-instruction', 'task'), ...expensiveFacts(20), ...manyFacts(RECENT_KEEP + 1)]
+    const result = truncateHistory(entries)
+    // 20 条半额 fact 中只有 1 条能落在预算内，其余 19 条折叠为一处占位。
+    assert.deepEqual(result.map(label).slice(0, 2), ['user-message:user-instruction', 'omitted:19'])
+})
+
+test('字符预算超限时从最旧一条起逐条出局，保留较新的', () => {
+    const half = Math.floor(HISTORY_CHAR_BUDGET / 2)
+    const entries = [call('a'), bigCall(half), bigCall(half + 100), ...manyFacts(RECENT_KEEP + 1)]
+    const result = truncateHistory(entries)
+    // 保护区外的三条里，两条较旧的依次出局，较新的一条落在预算内被保留。
+    assert.deepEqual(result.map(label).slice(0, 2), ['omitted:2', 'tool-call:fact'])
+    const survivor = result[1]
+    assert.equal(survivor?.kind === 'tool-call' ? survivor.arguments.length : 0, half + 100)
+    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, PROTECTED + 1)
+})
+
+test('保护区外余下的 fact 在预算内时保留', () => {
+    const entries = [call('a'), ...expensiveFacts(1), ...manyFacts(RECENT_KEEP + 1)]
+    const result = truncateHistory(entries)
+    // 一条半额 fact 不超限，连同最旧一条与保护区共 13 条保留，无占位。
+    assert.deepEqual(omittedCounts(result), [])
+    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, PROTECTED + 2)
+})
+
+test('单条超大 fact 不再连带清空更早的权威条目', () => {
+    const entries = [
+        user('user-instruction', 'task'),
+        call('a'),
+        bigCall(HISTORY_CHAR_BUDGET * 2),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const result = truncateHistory(entries)
+    assert.deepEqual(result.map(label).slice(0, 2), ['user-message:user-instruction', 'omitted:2'])
+})
+
+test('窗口只统计可丢弃条目，权威角色不占名额', () => {
+    const entries = [user('user-instruction', 'task'), ...manyFacts(HISTORY_WINDOW + 20)]
+    const result = truncateHistory(entries)
     assert.equal(label(result[0]!), 'user-message:user-instruction')
-    assert.deepEqual(omittedCounts(result), [5])
-    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, HISTORY_WINDOW + 1)
+    // 保护区末尾 11 条 + 窗口内 128 条保留，其余折叠为一个占位。
+    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, HISTORY_WINDOW + PROTECTED)
+    assert.deepEqual(omittedCounts(result), [entries.length - PROTECTED - HISTORY_WINDOW - 1])
 })
 
 test('超出窗口的权威角色不被丢弃', () => {
@@ -70,26 +125,12 @@ test('四类权威角色都在裁剪中保留', () => {
 })
 
 test('缺口按连续段分别折叠，位置与原文对齐', () => {
-    const entries = [call('a'), call('b'), user('user-instruction', 'task'), ...manyFacts(HISTORY_WINDOW + 4)]
+    const entries = [call('a'), call('b'), user('user-instruction', 'task'), ...manyFacts(HISTORY_WINDOW + 20)]
     const result = truncateHistory(entries)
-    // 前两条 fact 与紧随其后的 3 条被权威条目隔开，故有两处占位。
-    assert.deepEqual(omittedCounts(result), [2, 3])
+    // 前两条 fact 与紧随其后被裁掉的 fact 被权威条目隔开，故有两处占位。
+    assert.equal(omittedCounts(result).length, 2)
     assert.equal(label(result[0]!), 'omitted:2')
     assert.equal(label(result[1]!), 'user-message:user-instruction')
-})
-
-test('字符预算超限时从最旧一条起依次出局', () => {
-    const half = Math.floor(HISTORY_CHAR_BUDGET / 2) - 10
-    const entries = [call('a'), bigCall(half), bigCall(half), call('pending')]
-    const result = truncateHistory(entries)
-    // 两条半预算 fact 合计超限，最旧两条依次出局，较新一条与末条待审调用保留。
-    assert.deepEqual(result.map(label), ['omitted:2', 'tool-call:fact', 'tool-call:fact'])
-})
-
-test('单条超大 fact 不再连带清空更早的权威条目', () => {
-    const entries = [user('user-instruction', 'task'), call('a'), bigCall(HISTORY_CHAR_BUDGET * 2), call('pending')]
-    const result = truncateHistory(entries)
-    assert.deepEqual(result.map(label), ['user-message:user-instruction', 'omitted:2', 'tool-call:fact'])
 })
 
 test('最后一条待审调用永不丢弃，即使它单独超出预算', () => {
@@ -100,11 +141,14 @@ test('最后一条待审调用永不丢弃，即使它单独超出预算', () =>
 })
 
 test('占位说明声明内容不可用，且角色为 fact', () => {
-    const entries = [...manyFacts(HISTORY_WINDOW + 1), call('pending')]
+    const entries = [...manyFacts(HISTORY_WINDOW + 20), call('pending')]
     const [omitted] = truncateHistory(entries)
     assert.equal(omitted?.kind, 'omitted')
     assert.equal(omitted?.role, 'fact')
-    assert.equal(omitted?.text, '1 history item(s) omitted at this point; their content is unavailable.')
+    const count = omitted?.kind === 'omitted' ? omitted.count : 0
+    assert.equal(omitted?.kind === 'omitted' ? omitted.text : '',
+        `${String(count)} history item(s) omitted at this point; their content is unavailable.`)
+    assert.equal(count, omittedCounts(truncateHistory(entries))[0])
 })
 
 test('空历史返回空序列', () => {

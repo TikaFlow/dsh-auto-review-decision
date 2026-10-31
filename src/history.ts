@@ -1,13 +1,11 @@
 /**
- * 审查历史的裁剪：权威角色永不丢弃，其余条目按「最新优先」出局，缺口在原位置留占位。
- *
- * 只依赖类型与共享常量，无宿主依赖，故可独立测试。
+ * 审查历史的裁剪：权威角色与最近的若干条目永不丢弃，其余按「最新优先」出局，缺口在原位置留占位。
  *
  * @module dsh-auto-review-systemOne/history
  */
 
 import type { HistoricalEntry, ReviewSourceRole } from './types.ts'
-import { HISTORY_CHAR_BUDGET, HISTORY_WINDOW } from './shared/config.ts'
+import { HISTORY_CHAR_BUDGET, HISTORY_WINDOW, RECENT_KEEP } from './shared/config.ts'
 
 /** 权威角色：其文本定义任务、收窄动作或恢复上下文，任何裁剪都不得丢弃。 */
 const AUTHORITY_ROLES: ReadonlySet<ReviewSourceRole> = new Set<ReviewSourceRole>([
@@ -18,15 +16,16 @@ const AUTHORITY_ROLES: ReadonlySet<ReviewSourceRole> = new Set<ReviewSourceRole>
 ])
 
 /**
- * 按「重要 > 最新 > 更旧」裁剪历史：权威角色与待审调用永不丢弃，被裁掉的连续段在原位置折叠成一条占位说明，使模型把缺口视为未知而非不存在。
+ * 按「重要 > 最新 > 更旧」裁剪历史：权威角色、最近若干条历史与待审调用永不丢弃，
+ * 被裁掉的连续段在原位置折叠成一条占位说明，使模型把缺口视为未知而非不存在。
  * @param entries - 会话顺序排列的保留条目，最后一条是待审调用。
  * @returns 裁剪后的条目序列，缺口处为 `omitted` 占位。
  */
 export function truncateHistory(entries: readonly HistoricalEntry[]): HistoricalEntry[] {
-    // 最后一条是待审调用本身，它比任何历史都重要，不参与裁剪。
-    const lastIndex = entries.length - 1
+    // 待审调用与它之前的若干条历史一律保留：前者是判定对象，后者是紧邻上下文。
+    const protectedStart = Math.max(0, entries.length - RECENT_KEEP - 1)
     const droppable = (index: number, entry: HistoricalEntry): boolean =>
-        index !== lastIndex && !AUTHORITY_ROLES.has(entry.role)
+        index < protectedStart && !AUTHORITY_ROLES.has(entry.role)
     const candidates: number[] = []
     for (let index = 0; index < entries.length; index += 1) {
         const entry = entries[index]
