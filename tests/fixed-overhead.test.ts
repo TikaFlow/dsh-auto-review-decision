@@ -14,36 +14,33 @@ const PARTS = {
     },
 }
 
-test('固定开销等于 environment + policy + pending + 最长单个问题', () => {
-    const longest = Math.max(
-        byteLength(JSON.stringify(PARTS.questions.allow)),
-        byteLength(JSON.stringify(PARTS.questions.scope)),
-    )
+test('固定开销等于 environment + policy + pending + 全部问题', () => {
     const expected = byteLength(JSON.stringify(PARTS.environment))
         + byteLength(PARTS.policy)
         + byteLength(JSON.stringify(PARTS.pending))
-        + longest
+        + byteLength(JSON.stringify(PARTS.questions))
     assert.equal(fixedStateBytes(PARTS), expected)
 })
 
-test('questions 只计入最长一个，不按整份表求和', () => {
+test('questions 按整份表计入，而非只计最长一个', () => {
     const onlyScope = fixedStateBytes({
         ...PARTS,
         questions: { scope: PARTS.questions.scope },
     })
-    // scope 是较长的那道题，去掉 allow 后结果不变。
-    assert.equal(fixedStateBytes(PARTS), onlyScope)
+    // 去掉较短的那道题后结果变小，说明按整份表求和。
+    assert.ok(fixedStateBytes(PARTS) > onlyScope)
 
     const allSum = Object.values(PARTS.questions).reduce((sum, q) => sum + byteLength(JSON.stringify(q)), 0)
     const longest = Math.max(...Object.values(PARTS.questions).map(q => byteLength(JSON.stringify(q))))
     assert.ok(allSum > longest)
 })
 
-test('问题表为空时不计 question 部分', () => {
+test('问题表为空时只余下空对象的两个字节', () => {
     const empty = fixedStateBytes({ ...PARTS, questions: {} })
     const expected = byteLength(JSON.stringify(PARTS.environment))
         + byteLength(PARTS.policy)
         + byteLength(JSON.stringify(PARTS.pending))
+        + byteLength(JSON.stringify({}))
     assert.equal(empty, expected)
 })
 

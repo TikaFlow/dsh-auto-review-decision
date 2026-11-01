@@ -14,23 +14,19 @@ export interface FixedStateParts {
     readonly policy: string
     /** 待审调用。 */
     readonly pending: unknown
-    /** 全部问题；只计入最长的一个。 */
+    /** 全部问题；按整份表计入。 */
     readonly questions: Readonly<Record<string, unknown>>
 }
 
 /**
- * 固定开销的字节数：environment、policy、pending 与最长的一个 question。
+ * 固定开销的字节数：environment、policy、pending 与全部 questions。
  *
  * @param parts - 与 history 并列的固定部分。
  * @returns 固定开销的字节数。
  */
 export function fixedStateBytes(parts: FixedStateParts): number {
-    let longest = 0
-    for (const question of Object.values(parts.questions)) {
-        longest = Math.max(longest, byteLength(JSON.stringify(question)))
-    }
     return byteLength(JSON.stringify(parts.environment))
         + byteLength(parts.policy)
         + byteLength(JSON.stringify(parts.pending))
-        + longest
+        + byteLength(JSON.stringify(parts.questions))
 }
