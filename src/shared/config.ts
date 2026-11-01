@@ -76,6 +76,8 @@ export interface ReviewConfig {
     readonly model: string
     /** 决策模型上下文窗口（token）。 */
     readonly contextTokens: number
+    /** 用户白名单：这些工具免于决策模型审查。 */
+    readonly toolWhitelist: readonly string[]
     /** 所有问题的基准阈值。 */
     readonly confidenceThreshold: number
     /** 插件卸载或会话重置时的去向。 */
@@ -95,6 +97,7 @@ export const DEFAULT_CONFIG: ReviewConfig = {
     fullURL: false,
     model: '',
     contextTokens: 24 * 1024,
+    toolWhitelist: [],
     /** 基准阈值：所有问题因子的乘数基准。 */
     confidenceThreshold: 0.8,
     onSessionReset: 'workspace-write',
@@ -108,6 +111,7 @@ export const CONFIG_LABELS: Readonly<Record<ConfigKey, string>> = {
     fullURL: '地址为完整 URL',
     model: '模型 ID',
     contextTokens: '上下文窗口',
+    toolWhitelist: '工具白名单',
     confidenceThreshold: '置信度阈值',
     onSessionReset: '会话重置时的权限模式',
     onApiUnavailable: '接口不可用时的权限模式',
@@ -163,4 +167,19 @@ export function parseContextTokens(text: string): number | undefined {
     const tokens = value * (unit === '' ? 1 : TOKEN_UNIT_MULTIPLIER[unit])
     if (!Number.isSafeInteger(tokens) || tokens < MIN_CONTEXT_TOKENS) return undefined
     return tokens
+}
+
+/**
+ * 解析「工具白名单」草稿：逗号分隔（仅 `,`），每项去除首尾空白，过滤空项。
+ *
+ * @param text - 待解析的草稿。
+ * @returns 去空白、滤空后的工具名数组。
+ */
+export function parseToolWhitelist(text: string): string[] {
+    const items: string[] = []
+    for (const item of text.split(',')) {
+        const name = item.trim()
+        if (name !== '') items.push(name)
+    }
+    return items
 }

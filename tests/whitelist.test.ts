@@ -113,3 +113,16 @@ test('文件系统服务缺失时退回审查', async () => {
     const verdict = await whitelistVerdict(ctx, exec('write', { file_path: '/x' }), CWD, new AbortController().signal)
     assert.equal(verdict, undefined)
 })
+
+test('用户白名单命中的工具直接放行', async () => {
+    // pwsh 不在内置免审表，也无半免审校验器：只有用户白名单能放行它。
+    const verdict = await whitelistVerdict(
+        fakeFs(new Set()), exec('pwsh', {}), CWD, new AbortController().signal, new Set(['pwsh', 'read']))
+    assert.deepEqual(verdict, { kind: 'allow' })
+})
+
+test('用户白名单未命中的工具仍送审', async () => {
+    const verdict = await whitelistVerdict(
+        fakeFs(new Set()), exec('terminal_send', {}), CWD, new AbortController().signal, new Set(['pwsh']))
+    assert.equal(verdict, undefined)
+})

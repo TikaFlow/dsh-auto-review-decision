@@ -96,6 +96,7 @@ const halfExemptDict: Record<string, Validator> = {
 /**
  * 判定一次调用是否免审。
  * @param cwd - 会话当前工作目录，即工作区边界。
+ * @param userWhitelist - 配置的用户白名单：命中的工具直接放行。
  * @returns 免审结论；`undefined` 表示仍需送审。
  */
 export async function whitelistVerdict(
@@ -103,8 +104,9 @@ export async function whitelistVerdict(
     exec: ToolExecution,
     cwd: string,
     signal: AbortSignal,
+    userWhitelist: ReadonlySet<string> = new Set(),
 ): Promise<ReviewVerdict | undefined> {
-    // if (用户白名单.has(exec.name)) return { kind: 'allow' } // TODO
+    if (userWhitelist.has(exec.name)) return { kind: 'allow' }
     if (EXEMPT_TOOLS.has(exec.name)) return { kind: 'allow' }
 
     const validator = halfExemptDict[exec.name]

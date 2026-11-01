@@ -232,6 +232,20 @@ export function Card(props: CardProps) {
                                     onReset={() => { props.resetField('confidenceThreshold') }}
                                 />
                             </Row>
+                            <Row>
+                                <SettingsValueField
+                                    id="dsh-ar-tool-whitelist"
+                                    label={t('toolWhitelist')}
+                                    hint={t('toolWhitelistHint').replace('{count}', String(state.toolWhitelistCount))}
+                                    overriddenLabel={t('overridden')}
+                                    resetLabel={t('reset')}
+                                    invalidLabel=''
+                                    disabled={disabled}
+                                    {...state.toolWhitelist}
+                                    onEdit={text => { props.edit('toolWhitelist', text) }}
+                                    onReset={() => { props.resetField('toolWhitelist') }}
+                                />
+                            </Row>
                             <p className="dsh-ar-group">{t('fallback')}</p>
                             <Row>
                                 <PresetRow

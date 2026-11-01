@@ -74,7 +74,7 @@ async function review(
     const issues = validateArgs(exec.arguments, snapshot.pending.schema.parameters)
     if (issues.length > 0) return { kind: 'allow' }
     // 白名单在本地预检之后生效：免审调用仍须通过参数校验。
-    const exempt = await whitelistVerdict(ctx, exec, cwd, signal)
+    const exempt = await whitelistVerdict(ctx, exec, cwd, signal, new Set(config.values.toolWhitelist))
     if (exempt !== undefined) return exempt
     // 此审查请求只发往决策端点，永不进入会话日志。
     // history 只承载文本事实：非文本块（图片、附件等）降为占位说明。

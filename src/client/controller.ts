@@ -26,6 +26,7 @@ import {
     TEST_URL,
     baseURLProblem,
     parseContextTokens,
+    parseToolWhitelist,
 } from '../shared/config.ts'
 import { isRecord } from '../shared/tools.ts'
 
@@ -116,6 +117,17 @@ const contextTokensField: SettingsFieldSpec = {
     },
 }
 
+/** 工具白名单字段的 spec：空串清除，其余解析为去空白、滤空后的数组。 */
+const toolWhitelistField: SettingsFieldSpec = {
+    field: 'toolWhitelist',
+    format: value => Array.isArray(value) ? value.join(',') : '',
+    parse: (text) => {
+        const trimmed = text.trim()
+        if (trimmed === '') return { kind: 'clear' }
+        return { kind: 'set', value: parseToolWhitelist(trimmed) }
+    },
+}
+
 /** 预设字段的 spec：只接受候选表内的值。 */
 function presetField(field: 'onSessionReset' | 'onApiUnavailable'): SettingsFieldSpec {
     return {
@@ -158,6 +170,10 @@ export interface CardState extends SettingsFormShell {
     readonly model: SettingsFieldState
     /** 上下文窗口字段。 */
     readonly contextTokens: SettingsFieldState
+    /** 工具白名单字段。 */
+    readonly toolWhitelist: SettingsFieldState
+    /** 草稿解析后的工具数（滤空后），供提示展示。 */
+    readonly toolWhitelistCount: number
     /** 阈值字段。 */
     readonly confidenceThreshold: SettingsFieldState
     /** 卸载去向（草稿文本）。 */
@@ -220,6 +236,7 @@ export class CardController {
             booleanField('fullURL'),
             settingsTextField('model'),
             contextTokensField,
+            toolWhitelistField,
             thresholdField,
             presetField('onSessionReset'),
             presetField('onApiUnavailable'),
@@ -245,6 +262,8 @@ export class CardController {
             fullURL: draftBoolean(this.form.field('fullURL').text),
             model,
             contextTokens: this.form.field('contextTokens'),
+            toolWhitelist: this.form.field('toolWhitelist'),
+            toolWhitelistCount: parseToolWhitelist(this.form.field('toolWhitelist').text).length,
             confidenceThreshold: this.form.field('confidenceThreshold'),
             onSessionReset: this.form.field('onSessionReset').text,
             onApiUnavailable: this.form.field('onApiUnavailable').text,

@@ -25,6 +25,8 @@ export const Config = z.object({
     model: z.string().default(DEFAULT_CONFIG.model).description(CONFIG_LABELS.model).volatile(),
     contextTokens: z.natural().min(MIN_CONTEXT_TOKENS).default(DEFAULT_CONFIG.contextTokens)
         .description(CONFIG_LABELS.contextTokens).volatile(),
+    toolWhitelist: z.array(z.string()).default([...DEFAULT_CONFIG.toolWhitelist])
+        .description(CONFIG_LABELS.toolWhitelist).volatile(),
     confidenceThreshold: z.number().min(MIN_CONFIDENCE_THRESHOLD).max(MAX_CONFIDENCE_THRESHOLD)
         .default(DEFAULT_CONFIG.confidenceThreshold).description(CONFIG_LABELS.confidenceThreshold).volatile(),
     onSessionReset: z.union([...PRESET_OPTIONS]).default(DEFAULT_CONFIG.onSessionReset)
@@ -92,6 +94,20 @@ function readContextTokens(input: ConfigInput): number {
     return value
 }
 
+/** 读工具白名单：缺失落默认（空表），非字符串数组或含空元素非法（不 clamp）。 */
+function readToolWhitelist(input: ConfigInput): readonly string[] {
+    const value = current(input.toolWhitelist)
+    if (value === undefined || value === null) return DEFAULT_CONFIG.toolWhitelist
+    if (!Array.isArray(value)) throw invalid('toolWhitelist', '必须是字符串数组')
+    const items: string[] = []
+    for (const item of value) {
+        if (typeof item !== 'string') throw invalid('toolWhitelist', '每个元素必须是字符串')
+        const name = item.trim()
+        if (name !== '') items.push(name)
+    }
+    return items
+}
+
 /** 判断一个字符串是否为候选预设。 */
 function isPresetOption(value: string): value is PresetOption {
     return (PRESET_OPTIONS as readonly string[]).includes(value)
@@ -138,6 +154,7 @@ export function readReviewConfig(input: ConfigInput | undefined): ConfigRead {
         fullURL,
         model: readString(raw, 'model', ''),
         contextTokens: readContextTokens(raw),
+        toolWhitelist: readToolWhitelist(raw),
         confidenceThreshold: readThreshold(raw),
         onSessionReset: readTarget(raw, 'onSessionReset'),
         onApiUnavailable: readTarget(raw, 'onApiUnavailable'),
