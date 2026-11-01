@@ -6,20 +6,11 @@
  * @module dsh-auto-review-decision/budget
  */
 
-/** 决策模型的上下文窗口（token）。 */
-const CONTEXT_TOKENS = 24 * 1024
-
 /** 压线余量的比例。 */
 const CONTEXT_MARGIN_RATIO = 0.05
 
 /** 压线余量的下限（token），供小上下文使用。 */
 const MIN_CONTEXT_MARGIN_TOKENS = 1024
-
-/** 压线余量（token）：上下文的一定比例，但不少于下限。 */
-const CONTEXT_MARGIN_TOKENS = Math.max(CONTEXT_TOKENS * CONTEXT_MARGIN_RATIO, MIN_CONTEXT_MARGIN_TOKENS)
-
-/** 决策模型整个请求的硬上限（token）。 */
-const HARD_STATE_TOKENS = CONTEXT_TOKENS - CONTEXT_MARGIN_TOKENS
 
 /** token 因子的初始值：每个 token 平均对应的字节数。 */
 const INITIAL_TOKEN_FACTOR = 2.5
@@ -56,24 +47,32 @@ function ledgerFor(signature: string): Ledger {
     return ledger
 }
 
+/** 由上下文窗口算出整个请求的硬上限（token）：上下文减压线余量。 */
+function hardStateTokens(contextTokens: number): number {
+    const margin = Math.max(contextTokens * CONTEXT_MARGIN_RATIO, MIN_CONTEXT_MARGIN_TOKENS)
+    return contextTokens - margin
+}
+
 /**
  * 本次剪裁允许的最大字节数。
  * @param signature - 决策端点与模型标识的组合，变化即重置。
+ * @param contextTokens - 决策模型上下文窗口（token）。
  * @returns `HARD_STATE_TOKENS * factor`，向下取整。
  */
-export function maxBytes(signature: string): number {
-    return Math.floor(HARD_STATE_TOKENS * ledgerFor(signature).factor)
+export function maxBytes(signature: string, contextTokens: number): number {
+    return Math.floor(hardStateTokens(contextTokens) * ledgerFor(signature).factor)
 }
 
 /**
  * 本次留给可裁剪历史的字节数：整份内容的字节上限扣掉固定开销。
  *
  * @param signature - 决策端点与模型标识的组合，变化即重置。
+ * @param contextTokens - 决策模型上下文窗口（token）。
  * @param fixedBytes - 固定开销的字节数。
  * @returns 可给历史的字节数；固定开销已超上限时为 0。
  */
-export function historyBytes(signature: string, fixedBytes: number): number {
-    const limit = maxBytes(signature)
+export function historyBytes(signature: string, contextTokens: number, fixedBytes: number): number {
+    const limit = maxBytes(signature, contextTokens)
     const overhead = Number.isFinite(fixedBytes) && fixedBytes > 0 ? fixedBytes : 0
     return Math.max(0, limit - overhead)
 }

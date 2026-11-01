@@ -25,6 +25,7 @@ import {
     REVIEW_TIMEOUT_MS,
     TEST_URL,
     baseURLProblem,
+    parseContextTokens,
 } from '../shared/config.ts'
 import { isRecord } from '../shared/tools.ts'
 
@@ -103,6 +104,18 @@ const baseURLField: SettingsFieldSpec = {
     },
 }
 
+/** 上下文窗口字段的 spec：空串清除，纯数字或 K/M 单位换算，其余阻止保存。 */
+const contextTokensField: SettingsFieldSpec = {
+    field: 'contextTokens',
+    format: value => typeof value === 'number' ? String(value) : '',
+    parse: (text) => {
+        const trimmed = text.trim()
+        if (trimmed === '') return { kind: 'clear' }
+        const tokens = parseContextTokens(trimmed)
+        return tokens === undefined ? undefined : { kind: 'set', value: tokens }
+    },
+}
+
 /** 预设字段的 spec：只接受候选表内的值。 */
 function presetField(field: 'onSessionReset' | 'onApiUnavailable'): SettingsFieldSpec {
     return {
@@ -143,6 +156,8 @@ export interface CardState extends SettingsFormShell {
     readonly fullURL: boolean
     /** 模型字段。 */
     readonly model: SettingsFieldState
+    /** 上下文窗口字段。 */
+    readonly contextTokens: SettingsFieldState
     /** 阈值字段。 */
     readonly confidenceThreshold: SettingsFieldState
     /** 卸载去向（草稿文本）。 */
@@ -204,6 +219,7 @@ export class CardController {
             baseURLField,
             booleanField('fullURL'),
             settingsTextField('model'),
+            contextTokensField,
             thresholdField,
             presetField('onSessionReset'),
             presetField('onApiUnavailable'),
@@ -228,6 +244,7 @@ export class CardController {
             baseURL,
             fullURL: draftBoolean(this.form.field('fullURL').text),
             model,
+            contextTokens: this.form.field('contextTokens'),
             confidenceThreshold: this.form.field('confidenceThreshold'),
             onSessionReset: this.form.field('onSessionReset').text,
             onApiUnavailable: this.form.field('onApiUnavailable').text,

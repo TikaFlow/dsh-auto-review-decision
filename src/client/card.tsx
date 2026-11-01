@@ -186,6 +186,21 @@ export function Card(props: CardProps) {
                                     />
                                 </Row>
                                 <Row>
+                                    <SettingsValueField
+                                        id="dsh-ar-context-tokens"
+                                        label={t('contextTokens')}
+                                        hint={t('contextTokensHint')}
+                                        overriddenLabel={t('overridden')}
+                                        resetLabel={t('reset')}
+                                        invalidLabel={t('invalidContextTokens')}
+                                        placeholder="24K"
+                                        disabled={disabled}
+                                        {...state.contextTokens}
+                                        onEdit={text => { props.edit('contextTokens', text) }}
+                                        onReset={() => { props.resetField('contextTokens') }}
+                                    />
+                                </Row>
+                                <Row>
                                     <div className="dsh-ar-actions">
                                         <button
                                             type="button"

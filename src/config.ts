@@ -10,6 +10,7 @@ import {
     DEFAULT_CONFIG,
     MAX_CONFIDENCE_THRESHOLD,
     MIN_CONFIDENCE_THRESHOLD,
+    MIN_CONTEXT_TOKENS,
     PRESET_OPTIONS,
     baseURLProblem,
     type ConfigKey,
@@ -22,6 +23,8 @@ export const Config = z.object({
     baseURL: z.string().default(DEFAULT_CONFIG.baseURL).description(CONFIG_LABELS.baseURL).volatile(),
     fullURL: z.boolean().default(DEFAULT_CONFIG.fullURL).description(CONFIG_LABELS.fullURL).volatile(),
     model: z.string().default(DEFAULT_CONFIG.model).description(CONFIG_LABELS.model).volatile(),
+    contextTokens: z.natural().min(MIN_CONTEXT_TOKENS).default(DEFAULT_CONFIG.contextTokens)
+        .description(CONFIG_LABELS.contextTokens).volatile(),
     confidenceThreshold: z.number().min(MIN_CONFIDENCE_THRESHOLD).max(MAX_CONFIDENCE_THRESHOLD)
         .default(DEFAULT_CONFIG.confidenceThreshold).description(CONFIG_LABELS.confidenceThreshold).volatile(),
     onSessionReset: z.union([...PRESET_OPTIONS]).default(DEFAULT_CONFIG.onSessionReset)
@@ -76,6 +79,19 @@ function readThreshold(input: ConfigInput): number {
     return value
 }
 
+/** 读上下文窗口：缺失落默认，非正整数或越界非法（不 clamp）。 */
+function readContextTokens(input: ConfigInput): number {
+    const value = current(input.contextTokens)
+    if (value === undefined || value === null) return DEFAULT_CONFIG.contextTokens
+    if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+        throw invalid('contextTokens', '必须是正整数')
+    }
+    if (value < MIN_CONTEXT_TOKENS) {
+        throw invalid('contextTokens', `必须不小于 ${MIN_CONTEXT_TOKENS}`)
+    }
+    return value
+}
+
 /** 判断一个字符串是否为候选预设。 */
 function isPresetOption(value: string): value is PresetOption {
     return (PRESET_OPTIONS as readonly string[]).includes(value)
@@ -121,6 +137,7 @@ export function readReviewConfig(input: ConfigInput | undefined): ConfigRead {
         baseURL,
         fullURL,
         model: readString(raw, 'model', ''),
+        contextTokens: readContextTokens(raw),
         confidenceThreshold: readThreshold(raw),
         onSessionReset: readTarget(raw, 'onSessionReset'),
         onApiUnavailable: readTarget(raw, 'onApiUnavailable'),

@@ -33,6 +33,9 @@ export const HISTORY_WINDOW = 128
 /** 最近多少条历史条目（不含待审调用）按权威处理：不论角色，一律不裁剪。 */
 export const RECENT_KEEP = 10
 
+/** 上下文窗口下限（token）。 */
+export const MIN_CONTEXT_TOKENS = 8192
+
 /** 置信度阈值下限。 */
 export const MIN_CONFIDENCE_THRESHOLD = 0.6
 
@@ -71,6 +74,8 @@ export interface ReviewConfig {
     readonly fullURL: boolean
     /** 决策模型标识。 */
     readonly model: string
+    /** 决策模型上下文窗口（token）。 */
+    readonly contextTokens: number
     /** 所有问题的基准阈值。 */
     readonly confidenceThreshold: number
     /** 插件卸载或会话重置时的去向。 */
@@ -89,6 +94,7 @@ export const DEFAULT_CONFIG: ReviewConfig = {
     baseURL: '',
     fullURL: false,
     model: '',
+    contextTokens: 24 * 1024,
     /** 基准阈值：所有问题因子的乘数基准。 */
     confidenceThreshold: 0.8,
     onSessionReset: 'workspace-write',
@@ -101,6 +107,7 @@ export const CONFIG_LABELS: Readonly<Record<ConfigKey, string>> = {
     baseURL: 'API 地址',
     fullURL: '地址为完整 URL',
     model: '模型 ID',
+    contextTokens: '上下文窗口',
     confidenceThreshold: '置信度阈值',
     onSessionReset: '会话重置时的权限模式',
     onApiUnavailable: '接口不可用时的权限模式',
@@ -134,4 +141,26 @@ export function baseURLProblem(value: string): string | undefined {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return '协议必须是 http 或 https'
     if (url.search !== '' || url.hash !== '') return '不应带查询串或片段'
     return undefined
+}
+
+/** 单位换算表：后缀到倍数。 */
+const TOKEN_UNIT_MULTIPLIER: Readonly<Record<string, number>> = {
+    k: 1024,
+    m: 1024 * 1024,
+}
+
+/**
+ * 解析「上下文窗口」草稿：正整数，或正整数 + K/M 单位（大小写均可，无空格）。
+ *
+ * @param text - 去除首尾空白后的草稿。
+ * @returns 换算后的 token 数；非法时 undefined。
+ */
+export function parseContextTokens(text: string): number | undefined {
+    const match = /^(\d+)([KkMm]?)$/u.exec(text)
+    if (match === null) return undefined
+    const value = Number(match[1])
+    const unit = match[2].toLowerCase()
+    const tokens = value * (unit === '' ? 1 : TOKEN_UNIT_MULTIPLIER[unit])
+    if (!Number.isSafeInteger(tokens) || tokens < MIN_CONTEXT_TOKENS) return undefined
+    return tokens
 }

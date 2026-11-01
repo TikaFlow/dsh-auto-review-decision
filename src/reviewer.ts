@@ -94,7 +94,7 @@ async function review(
         pending: { name: exec.name, arguments: exec.arguments },
         questions,
     })
-    const history = truncateHistory(projected, historyBytes(signature, fixedBytes))
+    const history = truncateHistory(projected, historyBytes(signature, config.values.contextTokens, fixedBytes))
     const body = {
         ...(config.values.model === '' ? {} : { model: config.values.model }),
         state: {
