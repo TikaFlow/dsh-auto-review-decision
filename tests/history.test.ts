@@ -8,14 +8,39 @@ import type { HistoricalEntry, ReviewSourceRole } from '../src/types.ts'
 /** 测试用的字节预算：取一个宽裕值，避免无关用例被裁剪干扰。 */
 const ROOMY = 512 * 1024
 
+/** 占位条目的字节数；比它还小的条目省略反而更占空间，会被钉住保留。 */
+const PLACEHOLDER_BYTES = byteLength(JSON.stringify({
+    kind: 'omitted',
+    role: 'fact',
+    count: 12,
+    text: '12 history item(s) omitted at this point; their content is unavailable.',
+}))
+
 /** 一条带角色与文本的保留条目。 */
 function user(role: ReviewSourceRole, text: string): HistoricalEntry {
     return { kind: 'user-message', role, source: { kind: 'user' }, content: [{ type: 'text', text }] }
 }
 
-/** 一条历史工具调用。 */
+/**
+ * 一条历史工具调用，体积明确大于占位，用于验证省略与窗口行为。
+ * @param path - 参数路径。
+ */
 function call(path: string): HistoricalEntry {
-    return { kind: 'tool-call', role: 'fact', mode: 'native', name: 'read', arguments: `{"path":"${path}"}` }
+    return {
+        kind: 'tool-call',
+        role: 'fact',
+        mode: 'native',
+        name: 'read',
+        arguments: JSON.stringify({ path: `history/${path}/packages/auto-review-systemOne/docs/notes.md` }),
+    }
+}
+
+/**
+ * 一条体积小于占位的历史工具调用，用于验证钉住保留。
+ * @param path - 参数路径。
+ */
+function tinyCall(path: string): HistoricalEntry {
+    return { kind: 'tool-call', role: 'fact', mode: 'native', name: 'read', arguments: `{"p":"${path}"}` }
 }
 
 /** 一条参数为指定 ASCII 长度的历史工具调用。 */
@@ -235,4 +260,56 @@ test('只有权威角色时不产生占位', () => {
     const entries = [user('user-instruction', 'a'), user('checkpoint', 'b')]
     assert.deepEqual(omittedCounts(truncateHistory(entries, ROOMY)), [])
     assert.deepEqual(truncateHistory(entries, ROOMY), entries)
+})
+
+test('比占位还小的条目被钉住保留，不折叠成占位', () => {
+    // 三条极小 fact 加上权威条目，整体远小于预算；它们不该变成占位。
+    const entries = [
+        user('user-instruction', 'task'),
+        tinyCall('a'),
+        tinyCall('b'),
+        tinyCall('c'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const result = truncateHistory(entries, ROOMY)
+    assert.deepEqual(omittedCounts(result), [])
+    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, RECENT_KEEP + 1 + 3)
+    // 小条目按原样保留，未被替换。
+    assert.deepEqual(result.slice(1, 4), [tinyCall('a'), tinyCall('b'), tinyCall('c')])
+})
+
+test('钉住的小条目不计入占位开销', () => {
+    // 同样预算下，含小条目的结果应比把它们省略更省：钉住后无占位。
+    const entries = [user('user-instruction', 'task'), tinyCall('a'), ...manyFacts(RECENT_KEEP + 1)]
+    const result = truncateHistory(entries, ROOMY)
+    assert.deepEqual(omittedCounts(result), [])
+    const tinyBytes = byteLength(JSON.stringify(tinyCall('a')))
+    assert.ok(tinyBytes <= PLACEHOLDER_BYTES, '该条目的确小于占位')
+})
+
+test('已开启缺口时，紧随的小条目仍被省略而非钉住', () => {
+    // 首个大条目触发省略，其后的小条目续接同一缺口。
+    const entries = [
+        user('user-instruction', 'task'),
+        call('big'),
+        tinyCall('a'),
+        tinyCall('b'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const result = truncateHistory(entries, 1024)
+    assert.deepEqual(omittedCounts(result), [3])
+})
+
+test('大条目按省略处理，与钉住的小条目形成两段不同行为', () => {
+    const entries = [
+        user('user-instruction', 'task'),
+        tinyCall('a'),
+        call('big'),
+        tinyCall('b'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const result = truncateHistory(entries, 2048)
+    // tinyCall('a') 钉住保留；call('big') 与 tinyCall('b') 连成一段缺口。
+    assert.equal(result[1]?.kind, 'tool-call')
+    assert.deepEqual(omittedCounts(result), [2])
 })
