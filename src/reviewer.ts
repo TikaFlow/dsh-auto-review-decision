@@ -19,7 +19,6 @@ import { getGuard } from './fallback.ts'
 import { decisionQuestions, judge } from './questions.ts'
 import { snapshotAutoReview } from './snapshot.ts'
 import { CREDENTIAL_REF } from './shared/config.ts'
-import { isFiniteNumber } from './shared/tools.ts'
 import { postDecision, FAILURE, SystemOneCallError } from './systemone-client.ts'
 import { whitelistVerdict } from './whitelist.ts'
 
@@ -120,6 +119,6 @@ async function review(
     })
     // 只有拿到有效 token 数才观测：字节数与 token 数必须同源配对。
     const inputTokens = response.usage?.input_tokens
-    if (isFiniteNumber(inputTokens)) observe(signature, metrics.bodyBytes, inputTokens)
+    if (inputTokens !== undefined && Number.isFinite(inputTokens)) observe(signature, metrics.bodyBytes, inputTokens)
     return judge(response, config.values.confidenceThreshold)
 }

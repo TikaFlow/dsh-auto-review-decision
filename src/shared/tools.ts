@@ -8,8 +8,3 @@
 export function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
-
-/** 判断一个未知值是否为有限数。 */
-export function isFiniteNumber(value: unknown): value is number {
-    return typeof value === 'number' && Number.isFinite(value)
-}
