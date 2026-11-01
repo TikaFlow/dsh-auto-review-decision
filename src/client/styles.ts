@@ -3,11 +3,11 @@
  *
  * 色值只用宿主 `--dsw-alias-*` 令牌；外壳与控件几何复刻宿主插件卡与 settings-form。
  *
- * @module dsh-auto-review-systemOne/client/styles
+ * @module dsh-auto-review-decision/client/styles
  */
 
 /** 样式标签 id。 */
-const STYLE_ID = 'dsh-ar-systemone-css'
+const STYLE_ID = 'dsh-ar-decision-css'
 
 /** 内嵌样式表（`dsh-ar-` 前缀防撞）。 */
 const STYLE_TEXT = [
@@ -63,7 +63,7 @@ export function ensureStyles(): void {
     if (tag === null) {
         tag = document.createElement('style')
         tag.id = STYLE_ID
-        tag.dataset.plugin = 'dsh-auto-review-systemOne'
+        tag.dataset.plugin = 'dsh-auto-review-decision'
         document.head.appendChild(tag)
     }
     if (tag.textContent !== STYLE_TEXT) tag.textContent = STYLE_TEXT

@@ -1,7 +1,7 @@
 /**
  * 本插件共用的类型定义。
  *
- * @module dsh-auto-review-systemOne/types
+ * @module dsh-auto-review-decision/types
  */
 
 import type { ContentBlock, MessageSource } from '@deepseek-ai/dsh-llm'

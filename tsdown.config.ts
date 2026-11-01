@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsdown'
 
 /** 浏览器半模块 id：必须是包名，宿主模块表按它注册工厂。 */
-const CLIENT_ID = 'dsh-auto-review-systemOne'
+const CLIENT_ID = 'dsh-auto-review-decision'
 
 /** 浏览器半外置的宿主模块：宿主模块表提供的平台单例，其余一律打进包内。 */
 const CLIENT_EXTERNALS = [

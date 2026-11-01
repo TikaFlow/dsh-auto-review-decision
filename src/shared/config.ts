@@ -3,17 +3,17 @@
  *
  * 只放纯数据与纯函数，不导入宿主包，故 Node 半与浏览器半共用同一份取值。
  *
- * @module dsh-auto-review-systemOne/shared/config
+ * @module dsh-auto-review-decision/shared/config
  */
 
 /** 配置命名空间：等于 patch 条目 id。 */
-export const CONFIG_NS = 'auto-review-systemOne'
+export const CONFIG_NS = 'auto-review-decision'
 
 /** 插件名（npm 包名）。 */
-export const PLUGIN_NAME = 'dsh-auto-review-systemOne'
+export const PLUGIN_NAME = 'dsh-auto-review-decision'
 
 /** 凭据引用名：写死而非配置项，值走宿主凭据管理。 */
-export const CREDENTIAL_REF = 'TIKAFLOW_SYSTEMONE_API_KEY'
+export const CREDENTIAL_REF = 'TIKAFLOW_DECISION_API_KEY'
 
 /** 降级提示的推送路由（落在 `/api` 之下）。 */
 export const NOTICE_ROUTE = `/api/${CONFIG_NS}/notice`

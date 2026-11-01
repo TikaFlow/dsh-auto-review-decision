@@ -1,7 +1,7 @@
 /**
  * 固定开销的计量：与 history 并列计入 `state` 且无法裁剪的部分。
  *
- * @module dsh-auto-review-systemOne/fixed-overhead
+ * @module dsh-auto-review-decision/fixed-overhead
  */
 
 import { byteLength } from './shared/bytes.ts'

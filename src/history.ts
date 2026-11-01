@@ -1,7 +1,7 @@
 /**
  * 审查历史的裁剪：权威角色与最近的若干条目永不丢弃，其余按「最新优先」出局，缺口在原位置留占位。
  *
- * @module dsh-auto-review-systemOne/history
+ * @module dsh-auto-review-decision/history
  */
 
 import type { HistoricalEntry, ReviewSourceRole } from './types.ts'

@@ -49,7 +49,7 @@ Node 半与浏览器半分离：`src/*` 进 `lib/index.js`，`src/client/*` 进 
 - 配置项全为 `.volatile()`，改完下次审查即生效。
 - 响应校验不 clamp 越界值；任一卫语句失败一律 `deny`。
 - 白名单在参数预检之后判定：免审调用仍须通过契约校验。
-- 凭据走宿主凭据管理（`TIKAFLOW_SYSTEMONE_API_KEY`），不得硬编码或回显。
+- 凭据走宿主凭据管理（`TIKAFLOW_DECISION_API_KEY`），不得硬编码或回显。
 
 ## 偏好
 

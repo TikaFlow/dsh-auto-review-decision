@@ -1,6 +1,6 @@
 {
-  "name": "dsh-auto-review-systemOne",
-  "description": "DSH 自动审查模式：在每一次工具以 Full access 执行前使用 SystemOne 模型来自动审查。",
+  "name": "dsh-auto-review-decision",
+  "description": "DSH 自动审查模式：在每一次工具以 Full access 执行前使用决策模型来自动审查。",
   "version": "0.0.1",
   "type": "module",
   "main": "lib/index.js",

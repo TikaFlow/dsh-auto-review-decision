@@ -1,7 +1,7 @@
 /**
  * 审查问题表的 id、问法、档位与判定因子。
  *
- * @module dsh-auto-review-systemOne/shared/questions
+ * @module dsh-auto-review-decision/shared/questions
  */
 
 export const DECISION_QUESTION_ID = 'allow'

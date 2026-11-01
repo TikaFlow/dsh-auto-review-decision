@@ -1,7 +1,7 @@
 /**
  * 会话退出去向：把仍处于 Auto 的会话切到指定权限预设。
  *
- * @module dsh-auto-review-systemOne/session-exit
+ * @module dsh-auto-review-decision/session-exit
  */
 
 import type { Context } from '@deepseek-ai/cordis'

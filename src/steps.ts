@@ -1,7 +1,7 @@
 /**
  * 回合与步骤身份：作用域键构造、步骤归属、PTC 起始事件归位。
  *
- * @module dsh-auto-review-systemOne/steps
+ * @module dsh-auto-review-decision/steps
  */
 
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'

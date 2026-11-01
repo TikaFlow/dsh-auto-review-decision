@@ -1,7 +1,7 @@
 /**
  * 审查输入的冻结：从会话日志与待执行动作构造不可变快照。
  *
- * @module dsh-auto-review-systemOne/snapshot
+ * @module dsh-auto-review-decision/snapshot
  */
 
 import type { ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm'

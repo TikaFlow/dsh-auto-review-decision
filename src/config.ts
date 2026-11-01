@@ -1,7 +1,7 @@
 /**
  * 审查配置的 schema 与加载期校验。
  *
- * @module dsh-auto-review-systemOne/config
+ * @module dsh-auto-review-decision/config
  */
 
 import z from '@deepseek-ai/schemastery'

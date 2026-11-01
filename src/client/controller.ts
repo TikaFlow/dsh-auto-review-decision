@@ -1,7 +1,7 @@
 /**
  * 卡片的表单模型：把配置 scope 与凭据状态投影成卡片状态。
  *
- * @module dsh-auto-review-systemOne/client/controller
+ * @module dsh-auto-review-decision/client/controller
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'

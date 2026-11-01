@@ -3,13 +3,13 @@
  *
  * 字段标签与 `CONFIG_LABELS` 一致；权限模式名沿用宿主官方译名。
  *
- * @module dsh-auto-review-systemOne/client/locale
+ * @module dsh-auto-review-decision/client/locale
  */
 
 /** 英文文案。 */
 const en = {
-    title: 'SystemOne review',
-    description: 'Review every tool call with the SystemOne decision API.',
+    title: 'Auto review',
+    description: 'Review every tool call with the decision model API.',
     config: 'Configuration',
     baseURL: 'API address',
     baseURLHint: 'Without /systemone; the code appends it.',
@@ -35,7 +35,7 @@ const en = {
     testing: 'Testing…',
     testHint: 'Sends one minimal request with the settings above.',
     testPassed: 'Connected.',
-    fallbackNotice: 'SystemOne review failed repeatedly; this session switched to "{preset}".',
+    fallbackNotice: 'Decision model review failed repeatedly; this session switched to "{preset}".',
     unavailable: 'Configuration is not available.',
     readOnly: 'Configuration is read-only.',
     saveFailed: 'Save was not accepted.',
@@ -50,8 +50,8 @@ const en = {
 
 /** 中文文案。 */
 const zh = {
-    title: 'SystemOne 审查',
-    description: '使用 SystemOne 决策接口审查每一次工具调用。',
+    title: '自动审查',
+    description: '使用决策模型接口审查每一次工具调用。',
     config: '配置',
     baseURL: 'API 地址',
     baseURLHint: '不含 /systemone，代码会自动追加。',
@@ -77,7 +77,7 @@ const zh = {
     testing: '测试中…',
     testHint: '用上面的配置发一次最小请求。',
     testPassed: '连接成功。',
-    fallbackNotice: 'SystemOne 审查连续失败，本会话已切换到「{preset}」权限模式。',
+    fallbackNotice: '决策模型审查连续失败，本会话已切换到「{preset}」权限模式。',
     unavailable: '配置服务不可用。',
     readOnly: '配置为只读。',
     saveFailed: '保存未被接受。',

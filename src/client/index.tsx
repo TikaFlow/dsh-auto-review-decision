@@ -4,7 +4,7 @@
  * 顶层只声明核心服务；`configForms`、`remote.credentials` 与席位注册落在子 fiber，
  * 子 fiber 卸载即级联撤销。
  *
- * @module dsh-auto-review-systemOne/client
+ * @module dsh-auto-review-decision/client
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
@@ -20,7 +20,7 @@ import { dictionaries, type CardLocaleKey } from './locale.ts'
 import { CONFIG_NS, PLUGIN_NAME } from '../shared/config.ts'
 
 /** 文案命名空间。 */
-const NS = 'settings.autoReviewSystemOne'
+const NS = 'settings.autoReviewDecision'
 
 /** 顶层依赖：仅核心服务。 */
 export const inject = ['slots', 'locale']
@@ -28,7 +28,7 @@ export const inject = ['slots', 'locale']
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface LocaleNamespaceMap {
         /** 卡片文案。 */
-        'settings.autoReviewSystemOne': CardLocaleKey
+        'settings.autoReviewDecision': CardLocaleKey
     }
 }
 

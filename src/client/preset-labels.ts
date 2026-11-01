@@ -1,7 +1,7 @@
 /**
  * 浏览器半的预设文案映射：权限预设机器值 → 文案键。
  *
- * @module dsh-auto-review-systemOne/client/preset-labels
+ * @module dsh-auto-review-decision/client/preset-labels
  */
 
 import type { CardLocaleKey } from './locale.ts'

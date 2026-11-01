@@ -3,7 +3,7 @@
  *
  * 状态跨请求累计；决策端点或模型标识变化即整体重置，使因子始终对应当前端点。
  *
- * @module dsh-auto-review-systemOne/budget
+ * @module dsh-auto-review-decision/budget
  */
 
 /** 决策模型的上下文窗口（token）。 */

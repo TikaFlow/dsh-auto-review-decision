@@ -1,7 +1,7 @@
 /**
  * SystemOne 决策接口的 HTTP 调用：一次请求、一次响应、失败即抛。
  *
- * @module dsh-auto-review-systemOne/systemone-client
+ * @module dsh-auto-review-decision/systemone-client
  */
 
 import { REVIEW_TIMEOUT_MS, SCORE_LEVELS, decisionEndpoint } from './shared/config.ts'

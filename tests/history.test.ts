@@ -31,7 +31,7 @@ function call(path: string): HistoricalEntry {
         role: 'fact',
         mode: 'native',
         name: 'read',
-        arguments: JSON.stringify({ path: `history/${path}/packages/auto-review-systemOne/docs/notes.md` }),
+        arguments: JSON.stringify({ path: `history/${path}/packages/auto-review-decision/docs/notes.md` }),
     }
 }
 

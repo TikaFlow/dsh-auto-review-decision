@@ -1,13 +1,13 @@
 ---
-description: "DSH 自动审查模式：在每一次工具以 Full access 执行前使用 SystemOne 模型来自动审查。"
+description: "DSH 自动审查模式：在每一次工具以 Full access 执行前使用决策模型来自动审查。"
 kind: "package-bundle"
 ---
 
-# dsh-auto-review-systemOne
+# dsh-auto-review-decision
 
 ## 概述
 
-派生自 `deepseek-ai/deepseek-harness` 的实验性插件 `packages/experimental/auto-review`，将审查判定后端切换为 SystemOne 决策接口。
+派生自 `deepseek-ai/deepseek-harness` 的实验性插件 `packages/experimental/auto-review`，将审查判定后端切换为决策模型接口。
 
 审查会对照你的要求检查每次调用。获准的调用以完全权限立即运行；被拒绝的调用等你决定。
 

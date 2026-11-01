@@ -1,7 +1,7 @@
 /**
  * 内置白名单：免于决策模型审查的调用。
  *
- * @module dsh-auto-review-systemOne/whitelist
+ * @module dsh-auto-review-decision/whitelist
  */
 
 import type { Context } from '@deepseek-ai/cordis'

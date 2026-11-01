@@ -4,7 +4,7 @@
  * 只覆盖宿主工具声明中实际出现的约束（type/required/properties/enum/items/
  * 任意组合），完整 JSON Schema 语义交由模型侧的 contract 问题兜底。
  *
- * @module dsh-auto-review-systemOne/args-schema
+ * @module dsh-auto-review-decision/args-schema
  */
 
 import { isRecord } from './shared/tools.ts'

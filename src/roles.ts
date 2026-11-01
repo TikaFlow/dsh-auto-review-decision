@@ -2,7 +2,7 @@
  * 来源角色判定：区分浏览器提示词、项目指令、压缩检查点与直接父级指令，
  * 并识别当前会话及继承会话中由模型自造的创建提示词。
  *
- * @module dsh-auto-review-systemOne/roles
+ * @module dsh-auto-review-decision/roles
  */
 
 import type { MessageSource, ContentBlock } from '@deepseek-ai/dsh-llm'

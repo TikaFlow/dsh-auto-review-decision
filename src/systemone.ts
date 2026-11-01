@@ -4,7 +4,7 @@
  * 本文件只声明外部 HTTP 契约，不含任何调用逻辑；接入实现就位前这些类型暂未被引用。
  * 协议细节见 docs/systemone-protocol.md。
  *
- * @module dsh-auto-review-systemOne/systemone
+ * @module dsh-auto-review-decision/systemone
  */
 
 /** 问题类型：是/否概率、封闭选项选择、有序档位评分。 */

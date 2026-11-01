@@ -1,7 +1,7 @@
 /**
  * 会话日志的读取工具：JSON 处理、记录判定、schema 校验、中止状态读取。
  *
- * @module dsh-auto-review-systemOne/log
+ * @module dsh-auto-review-decision/log
  */
 
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'

@@ -1,7 +1,7 @@
 /**
  * 字节计量：把文本按 UTF-8 折算成字节数。
  *
- * @module dsh-auto-review-systemOne/shared/bytes
+ * @module dsh-auto-review-decision/shared/bytes
  */
 
 const encoder = new TextEncoder()

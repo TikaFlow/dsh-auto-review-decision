@@ -1,7 +1,7 @@
 /**
  * 决策落地：把审查结论物化为工具流水线可消费的决定。
  *
- * @module dsh-auto-review-systemOne/verdict
+ * @module dsh-auto-review-decision/verdict
  */
 
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'

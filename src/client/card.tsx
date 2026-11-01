@@ -1,7 +1,7 @@
 /**
  * 配置卡片：复刻宿主插件卡的可折叠外壳，正文为配置、判定与降级三组设置。
  *
- * @module dsh-auto-review-systemOne/client/card
+ * @module dsh-auto-review-decision/client/card
  */
 
 import { useEffect, useState } from 'react'

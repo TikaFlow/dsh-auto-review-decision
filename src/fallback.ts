@@ -3,7 +3,7 @@
  *
  * 计数与降级都发生在审查调用内部，宿主生命周期无需感知。
  *
- * @module dsh-auto-review-systemOne/fallback
+ * @module dsh-auto-review-decision/fallback
  */
 
 import type { Context } from '@deepseek-ai/cordis'

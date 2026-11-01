@@ -1,7 +1,7 @@
 /**
  * 审查闸门的生命周期：Auto 预设贡献、前置审查接线、卸载时的会话去向与在途请求排空。
  *
- * @module dsh-auto-review-systemOne/lifecycle
+ * @module dsh-auto-review-decision/lifecycle
  */
 
 import { FiberState, type Context } from '@deepseek-ai/cordis'

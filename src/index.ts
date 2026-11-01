@@ -1,7 +1,7 @@
 /**
- * 基于 SystemOne 决策接口的授权闸门，服务于仅在当前会话生效的 Auto 权限预设。
+ * 基于决策模型接口的授权闸门，服务于仅在当前会话生效的 Auto 权限预设。
  *
- * @module dsh-auto-review-systemOne
+ * @module dsh-auto-review-decision
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -15,7 +15,7 @@ import { applyLifecycle } from './lifecycle.ts'
 import { installProbeRoute } from './probe.ts'
 
 /** Cordis 插件名，供加载器诊断使用。 */
-export const name = 'auto-review-systemOne'
+export const name = 'auto-review-decision'
 /** Auto 可被声明前必须具备的完整宿主服务。 */
 export const inject = ['settings', 'credentials', 'permissionPresets', 'sessions', 'tools', 'workingDirectory']
 

@@ -1,7 +1,7 @@
 /**
  * 审查问题表与判定规则。
  *
- * @module dsh-auto-review-systemOne/questions
+ * @module dsh-auto-review-decision/questions
  */
 
 import { HIGH_LEVEL_START, MIN_HIGH_RATIO, SAFE_LEVEL_START, SCORE_LEVELS } from './shared/config.ts'

@@ -1,7 +1,7 @@
 /**
  * 降级提示的浏览器半：订阅宿主推送，以宿主 Toast 呈现在 `shell.overlay` 席位。
  *
- * @module dsh-auto-review-systemOne/client/fallback-notice
+ * @module dsh-auto-review-decision/client/fallback-notice
  */
 
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -32,7 +32,7 @@ interface FallbackNoticeFace {
 }
 
 /** 提示组件 props。 */
-type FallbackNoticeProps = PropsLocale<'settings.autoReviewSystemOne'>
+type FallbackNoticeProps = PropsLocale<'settings.autoReviewDecision'>
     & Omit<FallbackNoticeFace, 'hooks'>
     & PropsHooks<FallbackNoticeFace['hooks']>
 
@@ -82,8 +82,8 @@ export function applyFallbackNotice(ctx: ClientContext): () => void {
     }
     const stopSlot = ctx.slots.inject('shell.overlay', () => ctx.slots.register({
         name: 'shell.overlay',
-        id: 'auto-review-systemOne.fallback',
-        locale: 'settings.autoReviewSystemOne',
+        id: 'auto-review-decision.fallback',
+        locale: 'settings.autoReviewDecision',
         inject: () => face,
     }, FallbackNoticeView))
     return () => {
