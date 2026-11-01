@@ -105,6 +105,53 @@ test('单条超大 fact 不再连带清空更早的权威条目', () => {
     assert.deepEqual(result.map(label).slice(0, 2), ['user-message:user-instruction', 'omitted:2'])
 })
 
+test('占位条目本身计入预算，超限时继续丢弃直到落进额度', () => {
+    // 被丢弃段集中在最旧一侧，折叠成少量占位；占位体积必须计入总额。
+    const entries = [
+        user('user-instruction', 'task'),
+        ...Array.from({ length: 40 }, (_, index) => call(`f${String(index)}`)),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const budget = 4096
+    const result = truncateHistory(entries, budget)
+    assert.ok(byteLength(JSON.stringify(result)) <= budget, '渲染结果应落在预算内')
+    assert.equal(omittedCounts(result).length, 1)
+})
+
+test('权威角色加占位自身超限时，仍全留并如实超出预算', () => {
+    // 权威条目密集散布时，每丢一条就多一段占位，总量反而变大。
+    const entries = [
+        ...Array.from({ length: 40 }, (_, index) => [
+            call(`f${String(index)}`),
+            user('constraint', `rule ${String(index)}`),
+        ]).flat(),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const budget = 8000
+    const result = truncateHistory(entries, budget)
+    // 权威角色与占位都不可再让，结果如实超出预算——这是既定取舍。
+    assert.ok(byteLength(JSON.stringify(result)) > budget)
+    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, PROTECTED)
+    assert.equal(result.filter(entry => entry.kind === 'user-message').length, 40)
+})
+
+test('占位段数越多，同样保留量下占用越大', () => {
+    // 两种排布丢弃同样数量的 fact，但权威条目的插入使占位被拆成更多段。
+    const compact = [
+        ...Array.from({ length: 30 }, (_, index) => call(`a${String(index)}`)),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const fragmented = [
+        ...Array.from({ length: 30 }, (_, index) => [call(`b${String(index)}`), user('constraint', 'rule')]).flat(),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const budget = 4096
+    const compactBytes = byteLength(JSON.stringify(truncateHistory(compact, budget)))
+    const fragmentedBytes = byteLength(JSON.stringify(truncateHistory(fragmented, budget)))
+    // 拆散后占位段更多，即便丢弃更多 fact 也难以压到同样小，故其字节数不会更小。
+    assert.ok(fragmentedBytes >= compactBytes)
+})
+
 test('按 UTF-8 字节计：同样字数下中文条目比 ASCII 更快耗尽预算', () => {
     const size = 4096
     const asciiBytes = byteLength(JSON.stringify(bigCall(size)))

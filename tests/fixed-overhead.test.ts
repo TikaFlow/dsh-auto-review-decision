@@ -15,23 +15,24 @@ const PARTS = {
 }
 
 test('固定开销等于 environment + policy + pending + 最长单个问题', () => {
-    const longestQuestion = Math.max(
+    const longest = Math.max(
         byteLength(JSON.stringify(PARTS.questions.allow)),
         byteLength(JSON.stringify(PARTS.questions.scope)),
     )
     const expected = byteLength(JSON.stringify(PARTS.environment))
         + byteLength(PARTS.policy)
         + byteLength(JSON.stringify(PARTS.pending))
-        + longestQuestion
+        + longest
     assert.equal(fixedStateBytes(PARTS), expected)
 })
 
-test('questions 只计入最长一个，不按全部求和', () => {
-    const single = fixedStateBytes({
+test('questions 只计入最长一个，不按整份表求和', () => {
+    const onlyScope = fixedStateBytes({
         ...PARTS,
         questions: { scope: PARTS.questions.scope },
     })
-    assert.equal(fixedStateBytes(PARTS), single)
+    // scope 是较长的那道题，去掉 allow 后结果不变。
+    assert.equal(fixedStateBytes(PARTS), onlyScope)
 
     const allSum = Object.values(PARTS.questions).reduce((sum, q) => sum + byteLength(JSON.stringify(q)), 0)
     const longest = Math.max(...Object.values(PARTS.questions).map(q => byteLength(JSON.stringify(q))))

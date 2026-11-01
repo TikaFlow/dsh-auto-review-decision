@@ -9,10 +9,16 @@
 /** 决策模型的上下文窗口（token）。 */
 const CONTEXT_TOKENS = 24 * 1024
 
-/** 压线余量（token）。 */
-const CONTEXT_MARGIN_TOKENS = 1000
+/** 压线余量的比例。 */
+const CONTEXT_MARGIN_RATIO = 0.05
 
-/** 决策模型 `state` 加最长问题的硬上限（token）。 */
+/** 压线余量的下限（token），供小上下文使用。 */
+const MIN_CONTEXT_MARGIN_TOKENS = 1024
+
+/** 压线余量（token）：上下文的一定比例，但不少于下限。 */
+const CONTEXT_MARGIN_TOKENS = Math.max(CONTEXT_TOKENS * CONTEXT_MARGIN_RATIO, MIN_CONTEXT_MARGIN_TOKENS)
+
+/** 决策模型整个请求的硬上限（token）。 */
 const HARD_STATE_TOKENS = CONTEXT_TOKENS - CONTEXT_MARGIN_TOKENS
 
 /** token 因子的初始值：每个 token 平均对应的字节数。 */
@@ -53,10 +59,10 @@ function ledgerFor(signature: string): Ledger {
 /**
  * 本次剪裁允许的最大字节数。
  * @param signature - 决策端点与模型标识的组合，变化即重置。
- * @returns `HARD_STATE_TOKENS * factor`。
+ * @returns `HARD_STATE_TOKENS * factor`，向下取整。
  */
 export function maxBytes(signature: string): number {
-    return HARD_STATE_TOKENS * ledgerFor(signature).factor
+    return Math.floor(HARD_STATE_TOKENS * ledgerFor(signature).factor)
 }
 
 /**

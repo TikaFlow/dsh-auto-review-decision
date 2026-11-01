@@ -31,15 +31,24 @@ export function truncateHistory(entries: readonly HistoricalEntry[], budgetBytes
     // 保护区与权威角色先无条件计入，它们的体积直接吃掉预算。
     let total = 0
     const candidates: number[] = []
+    const omittedLength = JSON.stringify({
+            kind: 'omitted',
+            role: 'fact',
+            count: 12,
+            text: "12 history item(s) omitted at this point; their content is unavailable.", // +/-2 误差可接受
+        }).length
+    let lastOmitted = false
     for (let index = 0; index < entries.length; index++) {
         const entry = entries[index]
         if (entry === undefined) continue
         if (droppable(index, entry)) {
             candidates.push(index)
+            if (!lastOmitted) total += omittedLength
+            lastOmitted = true
             continue
         }
-        const size = byteLength(JSON.stringify(entry))
-        total += size
+        total += byteLength(JSON.stringify(entry))
+        lastOmitted = false
     }
     // 窗口只统计可丢弃条目：超出窗口的更旧条目先出局，权威角色不占名额。
     const windowStart = Math.max(0, candidates.length - HISTORY_WINDOW)
