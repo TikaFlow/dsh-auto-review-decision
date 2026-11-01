@@ -6,7 +6,7 @@ import { budgetState, historyBytes, maxBytes, observe, resetBudget } from '../sr
 const CONTEXT_TOKENS = 24 * 1024
 const CONTEXT_MARGIN_TOKENS = Math.max(CONTEXT_TOKENS * 0.05, 1024)
 const HARD_STATE_TOKENS = CONTEXT_TOKENS - CONTEXT_MARGIN_TOKENS
-const INITIAL_TOKEN_FACTOR = 3
+const INITIAL_TOKEN_FACTOR = 2.5
 
 /** 两个不同的观测签名，模拟配置切换。 */
 const SIGNATURE = 'https://api.example/v1|false|jev-latest'

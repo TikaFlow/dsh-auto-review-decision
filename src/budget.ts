@@ -22,7 +22,7 @@ const CONTEXT_MARGIN_TOKENS = Math.max(CONTEXT_TOKENS * CONTEXT_MARGIN_RATIO, MI
 const HARD_STATE_TOKENS = CONTEXT_TOKENS - CONTEXT_MARGIN_TOKENS
 
 /** token 因子的初始值：每个 token 平均对应的字节数。 */
-const INITIAL_TOKEN_FACTOR = 3
+const INITIAL_TOKEN_FACTOR = 2.5
 
 /** 累计量：只统计「字节数与 token 数都拿到」的请求，两侧必须同源配对。 */
 interface Ledger {
