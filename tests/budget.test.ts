@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { budgetState, maxBytes, observe, resetBudget } from '../src/budget.ts'
+import { budgetState, historyBytes, maxBytes, observe, resetBudget } from '../src/budget.ts'
 
-/** 与 budget.ts 内部常量一致的测试基准值。 */
-const HARD_STATE_TOKENS = 31 * 1024
+/** 与 budget.ts 内部常量一致的测试基准值：上下文 24K，压线余量 1000。 */
+const CONTEXT_TOKENS = 24 * 1024
+const HARD_STATE_TOKENS = CONTEXT_TOKENS - 1000
 const INITIAL_TOKEN_FACTOR = 3
 
 /** 两个不同的观测签名，模拟配置切换。 */
@@ -104,4 +105,41 @@ test('多次观测按累计而非滑动窗口', () => {
     assert.equal(state?.totalBytes, 15000)
     assert.equal(state?.totalTokens, 5000)
     assert.equal(state?.factor, 3)
+})
+
+test('硬上限等于上下文大小减去 1000', () => {
+    resetBudget()
+    // 初始因子 3：上限应为 (24K - 1000) * 3 字节。
+    assert.equal(maxBytes(SIGNATURE), (24 * 1024 - 1000) * 3)
+})
+
+test('historyBytes 从上限中扣除固定开销', () => {
+    resetBudget()
+    const fixed = 2000
+    assert.equal(historyBytes(SIGNATURE, fixed), (24 * 1024 - 1000) * 3 - fixed)
+    // 与 maxBytes 的差额恰为固定开销。
+    assert.equal(maxBytes(SIGNATURE) - historyBytes(SIGNATURE, fixed), fixed)
+})
+
+test('固定开销超过上限时 historyBytes 为 0', () => {
+    resetBudget()
+    assert.equal(historyBytes(SIGNATURE, maxBytes(SIGNATURE) + 1), 0)
+    assert.equal(historyBytes(SIGNATURE, maxBytes(SIGNATURE)), 0)
+})
+
+test('固定开销非法时按 0 处理', () => {
+    resetBudget()
+    const limit = maxBytes(SIGNATURE)
+    assert.equal(historyBytes(SIGNATURE, 0), limit)
+    assert.equal(historyBytes(SIGNATURE, -10), limit)
+    assert.equal(historyBytes(SIGNATURE, Number.NaN), limit)
+    assert.equal(historyBytes(SIGNATURE, Number.POSITIVE_INFINITY), limit)
+})
+
+test('因子更新后 historyBytes 随之变化', () => {
+    resetBudget()
+    observe(SIGNATURE, 2000, 1000)
+    assert.equal(budgetState()?.factor, 2)
+    const fixed = 1500
+    assert.equal(historyBytes(SIGNATURE, fixed), (24 * 1024 - 1000) * 2 - fixed)
 })

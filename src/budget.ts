@@ -6,8 +6,14 @@
  * @module dsh-auto-review-systemOne/budget
  */
 
-/** 决策模型 `state` 加最长问题的硬上限（token）；取 31K 留出压线余量。 */
-const HARD_STATE_TOKENS = 31 * 1024
+/** 决策模型的上下文窗口（token）。 */
+const CONTEXT_TOKENS = 24 * 1024
+
+/** 压线余量（token）。 */
+const CONTEXT_MARGIN_TOKENS = 1000
+
+/** 决策模型 `state` 加最长问题的硬上限（token）。 */
+const HARD_STATE_TOKENS = CONTEXT_TOKENS - CONTEXT_MARGIN_TOKENS
 
 /** token 因子的初始值：每个 token 平均对应的字节数。 */
 const INITIAL_TOKEN_FACTOR = 3
@@ -51,6 +57,19 @@ function ledgerFor(signature: string): Ledger {
  */
 export function maxBytes(signature: string): number {
     return HARD_STATE_TOKENS * ledgerFor(signature).factor
+}
+
+/**
+ * 本次留给可裁剪历史的字节数：整份内容的字节上限扣掉固定开销。
+ *
+ * @param signature - 决策端点与模型标识的组合，变化即重置。
+ * @param fixedBytes - 固定开销的字节数。
+ * @returns 可给历史的字节数；固定开销已超上限时为 0。
+ */
+export function historyBytes(signature: string, fixedBytes: number): number {
+    const limit = maxBytes(signature)
+    const overhead = Number.isFinite(fixedBytes) && fixedBytes > 0 ? fixedBytes : 0
+    return Math.max(0, limit - overhead)
 }
 
 /**

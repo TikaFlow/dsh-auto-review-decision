@@ -11,7 +11,8 @@ import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { ReviewVerdict } from './questions.ts'
 import type { ShownSchemas } from './types.ts'
 import { truncateHistory } from './history.ts'
-import { maxBytes, observe } from './budget.ts'
+import { historyBytes, observe } from './budget.ts'
+import { fixedStateBytes } from './fixed-overhead.ts'
 import { validateArgs } from './args-schema.ts'
 import { getReviewConfig } from './config.ts'
 import { getGuard } from './fallback.ts'
@@ -87,7 +88,14 @@ async function review(
     })
     // 端点或模型标识变化即重置预算账本，因子始终对应当前端点。
     const signature = `${config.values.baseURL}|${String(config.values.fullURL)}|${config.values.model}`
-    const history = truncateHistory(projected, maxBytes(signature))
+    const questions = decisionQuestions()
+    const fixedBytes = fixedStateBytes({
+        environment: { cwd: snapshot.cwd },
+        policy: REVIEW_POLICY,
+        pending: { name: exec.name, arguments: exec.arguments },
+        questions,
+    })
+    const history = truncateHistory(projected, historyBytes(signature, fixedBytes))
     const body = {
         ...(config.values.model === '' ? {} : { model: config.values.model }),
         state: {
@@ -99,7 +107,7 @@ async function review(
                 arguments: exec.arguments,
             },
         },
-        questions: decisionQuestions(),
+        questions,
     }
     const metrics = { bodyBytes: 0 }
     const response = await postDecision(body, {
