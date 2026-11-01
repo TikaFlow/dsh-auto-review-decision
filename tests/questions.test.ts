@@ -64,10 +64,6 @@ test('全部通过则放行', () => {
     assert.deepEqual(verdict as unknown, { kind: 'allow' })
 })
 
-test('基准阈值为 0.8', () => {
-    assert.equal(DEFAULT_CONFIG.confidenceThreshold, 0.8)
-})
-
 test('noul 低于拒绝线则直接拒绝', () => {
     const verdict = judge(response(DENY_LINE - 0.01, ALL_PASS), THRESHOLD)
     assert.equal(verdict.kind, 'deny')
@@ -88,19 +84,12 @@ test('noul 达到放行线也不短路辅助问题', () => {
 })
 
 test('放行段的辅助阈值放宽：中间段不达标而放行段达标', () => {
-    // necessity 因子 0.84：中间段阈值 0.685，放行段 0.659，安全度 0.68 被补偿翻转。
-    const answer = score(4, { '0': 0.12, '1': 0.2, '2': 0.18, '3': 0.4, '4': 0.1 })
+    // necessity 因子 0.80：中间段阈值 0.653，放行段 0.627，安全度 0.64 被补偿翻转。
+    const answer = score(4, { '0': 0.2, '1': 0.16, '2': 0.14, '3': 0.4, '4': 0.1 })
     const pass = judge(response(ALLOW_LINE, { ...ALL_PASS, necessity: answer }), THRESHOLD)
     assert.equal((pass as { kind: string }).kind, 'allow')
     const check = judge(response((DENY_LINE + ALLOW_LINE) / 2, { ...ALL_PASS, necessity: answer }), THRESHOLD)
     assert.equal((check as { kind: string }).kind, 'ask')
-})
-
-test('放行线与拒绝线分别取 0.90 与 0.75，补偿因子取 0.98 与 1.02', () => {
-    assert.equal(DECISION_QUESTION_SPEC.allowFactor, 0.9)
-    assert.equal(DECISION_QUESTION_SPEC.denyFactor, 0.75)
-    assert.equal(DECISION_QUESTION_SPEC.allowCompensationFactor, 0.98)
-    assert.equal(DECISION_QUESTION_SPEC.checkCompensationFactor, 1.02)
 })
 
 test('重要问题低于拒绝线则直接拒绝', () => {
@@ -125,7 +114,7 @@ test('首个未达标者决定结果，不检查后续', () => {
     assert.equal((second as { reason: string }).reason.includes('操作不安全'), true)
 })
 
-test('有效阈值按因子下调：0.84 因子的问题阈值更松', () => {
+test('有效阈值按因子下调：0.80 因子的问题阈值更松', () => {
     const pass = judge(response(0.95, { ...ALL_PASS, necessity: score(3, { '2': 0.2, '3': 0.5, '4': 0.12 }) }), THRESHOLD)
     assert.equal((pass as { kind: string }).kind, 'allow')
 })

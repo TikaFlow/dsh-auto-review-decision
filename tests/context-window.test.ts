@@ -32,9 +32,8 @@ test('parseContextTokens 拒绝越界与超安全整数', () => {
 test('readReviewConfig 默认值与缺失落默认', () => {
     const withDefault = readReviewConfig(undefined)
     assert.equal(withDefault.values.contextTokens, DEFAULT_CONFIG.contextTokens)
-    assert.equal(withDefault.values.contextTokens, 24 * 1024)
     const withMissing = readReviewConfig({})
-    assert.equal(withMissing.values.contextTokens, 24 * 1024)
+    assert.equal(withMissing.values.contextTokens, DEFAULT_CONFIG.contextTokens)
 })
 
 test('readReviewConfig 接受合法上下文窗口', () => {

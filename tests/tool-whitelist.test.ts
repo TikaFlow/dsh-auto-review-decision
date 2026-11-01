@@ -28,8 +28,8 @@ test('readReviewConfig 接受字符串数组并去首尾空白', () => {
     assert.deepEqual(parsed.values.toolWhitelist, ['read', 'write', 'glob'])
 })
 
-test('readReviewConfig 拒绝非数组与非字符串元素', () => {
+test('readReviewConfig 拒绝非数组与非字符串元素，跳过空白元素', () => {
     assert.throws(() => readReviewConfig({ toolWhitelist: 'pwsh' }), /toolWhitelist/)
     assert.throws(() => readReviewConfig({ toolWhitelist: ['pwsh', 42] }), /toolWhitelist/)
-    assert.throws(() => readReviewConfig({ toolWhitelist: ['pwsh', ' '] }), /toolWhitelist/)
+    assert.deepEqual(readReviewConfig({ toolWhitelist: ['pwsh', ' '] }).values.toolWhitelist, ['pwsh'])
 })
