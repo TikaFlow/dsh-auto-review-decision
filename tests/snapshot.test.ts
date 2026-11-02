@@ -71,7 +71,15 @@ function appendCall(session: Session, turn: number, step: number, callId: string
  * 追加一条 PTC 派发起始事件。该事件类型由上游 PTC 运行时写入，安装的
  * dsh-session 类型未含此成员（运行时事件表收录），测试侧显式声明其数据形状。
  */
-function appendPtcStart(session: Session, turn: number, step: number, subCallId: string, parentCallId: string): void {
+function appendPtcStart(
+    session: Session,
+    turn: number,
+    step: number,
+    subCallId: string,
+    parentCallId: string,
+    name = 'inner-tool',
+    argumentsValue: unknown = { code: 'return 1' },
+): void {
     const append = session.append as unknown as (
         type: 'tool/ptc-dispatch-start',
         data: { turn: number; step: number; subCallId: ToolCallId; parentCallId: ToolCallId; rootCallId: ToolCallId; name: string; arguments: unknown },
@@ -83,8 +91,8 @@ function appendPtcStart(session: Session, turn: number, step: number, subCallId:
         subCallId: ToolCallId(subCallId),
         parentCallId: ToolCallId(parentCallId),
         rootCallId: ToolCallId(parentCallId),
-        name: 'inner-tool',
-        arguments: { code: 'return 1' },
+        name,
+        arguments: argumentsValue,
     })
 }
 
@@ -98,15 +106,20 @@ function nativeExec(callId: string): ToolExecution {
     } as ToolExecution
 }
 
-/** 组装「PTC 内层待执行动作」：带绑定 schema 与不透明父令牌。 */
-function ptcExec(callId: string, rootCallId: string): ToolExecution {
+/** 组装「PTC 内层待执行动作」：带绑定 schema 与不透明父令牌。schema 传 null 表示绑定缺失。 */
+function ptcExec(
+    callId: string,
+    rootCallId: string,
+    overrides: { name?: string; arguments?: unknown; schema?: ToolSchema | null } = {},
+): ToolExecution {
+    const schema = overrides.schema === undefined ? INNER_SCHEMA : overrides.schema
     return {
         callId: ToolCallId(callId),
         rootCallId: ToolCallId(rootCallId),
         parent: Symbol('ptc-parent') as ToolExecution['parent'],
-        name: 'inner-tool',
-        arguments: { code: 'return 1' },
-        schema: INNER_SCHEMA,
+        name: overrides.name ?? 'inner-tool',
+        arguments: overrides.arguments ?? { code: 'return 1' },
+        ...(schema === null ? {} : { schema }),
         signal: new AbortController().signal,
     } as ToolExecution
 }
@@ -443,4 +456,297 @@ test('外层 run_code 待审时其下已记录派发以 PTC 内层条目进历�
     assert.equal(dispatchEntry.mode, 'ptc-inner')
     assert.equal(dispatchEntry.name, 'inner-tool')
     assert.equal(dispatchEntry.arguments, JSON.stringify({ code: 'return 1' }, null, 2))
+})
+
+// fail-closed 矩阵：任一卫语句失败即整体抛错，不产出部分快照。
+
+test('请求头缺失时拒绝产出快照', () => {
+    const session = makeSession()
+    assert.throws(() => freeze(session, nativeExec('call-1')), /no complete request-header route is available/)
+})
+
+test('待审步骤已关闭时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 1, 'call-1')
+    session.append('step/end', { turn: 1, step: 1 })
+    assert.throws(() => freeze(session, nativeExec('call-1')), /the pending call has no open step in the session log/)
+})
+
+test('有待审日志但表面无可见块时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    openStep(session, 1, 1)
+    appendCall(session, 1, 1, 'call-1')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /the pending root call is missing from the current surface/)
+})
+
+test('根块可见但根日志缺失时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    assert.throws(() => freeze(session, nativeExec('call-1')), /the pending root call is missing or ambiguous in the session log/)
+})
+
+test('当前消息里待审根之前的可见块缺日志时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('ghost'), name: 'probe', arguments: '{}' },
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 1, 'call-1')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /a visible call before the pending root is missing from the session log/)
+})
+
+test('待审根日志重复时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 1, 'call-1')
+    appendCall(session, 1, 1, 'call-1')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /the pending root call is missing or ambiguous in the session log/)
+})
+
+test('当前表面出现重复的待审根块时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    const block = { type: 'tool-call' as const, id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' }
+    appendAssistant(session, 1, 1, [block, block])
+    appendCall(session, 1, 1, 'call-1')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /the pending root call is ambiguous in the current surface/)
+})
+
+test('待审调用名与执行动作不符时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'other', arguments: '{}' },
+    ])
+    appendCall(session, 1, 1, 'call-1', 'other', '{}')
+    const exec = {
+        callId: ToolCallId('call-1'),
+        rootCallId: ToolCallId('call-1'),
+        name: 'probe',
+        arguments: {},
+        signal: new AbortController().signal,
+    } as ToolExecution
+    assert.throws(() => freeze(session, exec), /the pending native call disagrees with its logged action/)
+})
+
+test('待审调用参数与执行动作不符时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{}' },
+    ])
+    appendCall(session, 1, 1, 'call-1', 'probe', '{}')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /the pending native call disagrees with its logged action/)
+})
+
+test('可见块与其日志记录名字不一致时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('hist-1'), name: 'shown', arguments: '{}' },
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 1, 'hist-1', 'logged', '{}')
+    appendCall(session, 1, 1, 'call-1')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /a visible tool call disagrees with its logged action/)
+})
+
+test('可见调用序列在缺日志调用之后仍出现已启动调用时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{}' },
+        { type: 'tool-call', id: ToolCallId('mid'), name: 'probe', arguments: '{}' },
+        { type: 'tool-call', id: ToolCallId('later'), name: 'probe', arguments: '{}' },
+    ])
+    appendCall(session, 1, 1, 'call-1', 'probe', '{}')
+    appendCall(session, 1, 1, 'later', 'probe', '{}')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /visible native call logs do not form a started prefix/)
+})
+
+test('当前消息里待审根之前的调用日志重复时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('dup'), name: 'probe', arguments: '{}' },
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 1, 'dup', 'probe', '{}')
+    appendCall(session, 1, 1, 'dup', 'probe', '{}')
+    appendCall(session, 1, 1, 'call-1')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /a native call identity is ambiguous in the session log/)
+})
+
+test('未启动调用携带 PTC 派发日志时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+        { type: 'tool-call', id: ToolCallId('later'), name: 'run_code', arguments: '{"code":"probe()"}' },
+    ])
+    appendCall(session, 1, 1, 'call-1')
+    appendPtcStart(session, 1, 1, 'sub-later', 'later')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /an unstarted visible call has logged PTC dispatches/)
+})
+
+test('待审工具名不在请求头中时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [RUN_CODE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 1, 'call-1')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /the pending native tool schema is missing or ambiguous/)
+})
+
+test('请求头中同名 schema 重复时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA, PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 1, 'call-1')
+    assert.throws(() => freeze(session, nativeExec('call-1')), /the pending native tool schema is missing or ambiguous/)
+})
+
+test('请求头 schema 缺少描述或参数声明时拒绝产出快照', () => {
+    for (const schema of [{ name: 'probe', parameters: { type: 'object' } }, { name: 'probe', description: 'probe' }]) {
+        const session = makeSession()
+        appendHeader(session, [schema as never])
+        appendUser(session, [{ type: 'text', text: '处理一次' }], { kind: 'user' })
+        openStep(session, 1, 1)
+        appendAssistant(session, 1, 1, [
+            { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
+        ])
+        appendCall(session, 1, 1, 'call-1')
+        assert.throws(() => freeze(session, nativeExec('call-1')), /the pending native tool schema is incomplete/)
+    }
+})
+
+test('PTC 父根调用无日志时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '派发内层调用' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+    assert.throws(() => freeze(session, ptcExec('sub-1', 'root-1')), /the pending root call is missing or ambiguous in the session log/)
+})
+
+test('PTC 父块可见但父日志缺失时先拒绝根日志缺失', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '派发内层调用' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+    assert.throws(() => freeze(session, ptcExec('sub-1', 'root-1')), /the pending root call is missing or ambiguous in the session log/)
+})
+
+test('执行动作根身份与派发记录根不符时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '派发内层调用' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+    assert.throws(() => freeze(session, ptcExec('sub-1', 'other-root')), /the pending root call is missing or ambiguous in the session log/)
+})
+
+test('派发记录名与执行动作不符时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '派发内层调用' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1', 'other')
+    assert.throws(() => freeze(session, ptcExec('sub-1', 'root-1', { name: 'probe', arguments: {} })), /the pending PTC call disagrees with its logged action/)
+})
+
+test('派发记录参数与执行动作不符时拒绝产出快照', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '派发内层调用' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1', 'inner-tool', { other: true })
+    assert.throws(() => freeze(session, ptcExec('sub-1', 'root-1', { arguments: {} })), /the pending PTC call disagrees with its logged action/)
+})
+
+test('PTC 绑定 schema 缺失或名字不符时拒绝产出快照', () => {
+    for (const overrides of [{ schema: null }, { schema: { ...INNER_SCHEMA, name: 'other' } }]) {
+        const session = makeSession()
+        appendHeader(session, [PROBE_SCHEMA])
+        appendUser(session, [{ type: 'text', text: '派发内层调用' }], { kind: 'user' })
+        openStep(session, 1, 1)
+        appendAssistant(session, 1, 1, [
+            { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+        ])
+        appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+        appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+        assert.throws(() => freeze(session, ptcExec('sub-1', 'root-1', overrides)), /the pending PTC binding schema is missing or inconsistent/)
+    }
+})
+
+test('PTC 绑定 schema 缺少描述或参数声明时拒绝产出快照', () => {
+    for (const schema of [{ name: 'inner-tool', parameters: { type: 'object' } }, { name: 'inner-tool', description: 'inner' }]) {
+        const session = makeSession()
+        appendHeader(session, [PROBE_SCHEMA])
+        appendUser(session, [{ type: 'text', text: '派发内层调用' }], { kind: 'user' })
+        openStep(session, 1, 1)
+        appendAssistant(session, 1, 1, [
+            { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+        ])
+        appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+        appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+        assert.throws(() => freeze(session, ptcExec('sub-1', 'root-1', { schema: schema as never })), /the pending PTC tool schema is incomplete/)
+    }
 })
