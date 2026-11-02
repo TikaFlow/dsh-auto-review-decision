@@ -27,11 +27,11 @@ export const TEST_ROUTE = `/api/${CONFIG_NS}/test`
 /** 同一路由的文档相对形式，供浏览器半直接使用。 */
 export const TEST_URL = TEST_ROUTE.slice(1)
 
-/** 审查请求保留的最近可丢弃历史条目数；权威角色不受此限。 */
-export const HISTORY_WINDOW = 128
-
-/** 最近多少条历史条目（不含待审调用）按权威处理：不论角色，一律不裁剪。 */
+/** 最近保留多少条历史条目（不含待审调用）按权威处理：不论角色，一律不裁剪。 */
 export const RECENT_KEEP = 10
+
+/** 最早保留多少条历史条目。 */
+export const HEAD_KEEP = 10
 
 /** 上下文窗口下限（token）。 */
 export const MIN_CONTEXT_TOKENS = 8192

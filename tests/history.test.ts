@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { truncateHistory } from '../src/history.ts'
 import { byteLength } from '../src/shared/bytes.ts'
-import { HISTORY_WINDOW, RECENT_KEEP } from '../src/shared/config.ts'
+import { RECENT_KEEP } from '../src/shared/config.ts'
 import type { HistoricalEntry, ReviewSourceRole } from '../src/types.ts'
 
 /** 测试用的字节预算：取一个宽裕值，避免无关用例被裁剪干扰。 */
@@ -22,7 +22,7 @@ function user(role: ReviewSourceRole, text: string): HistoricalEntry {
 }
 
 /**
- * 一条历史工具调用，体积明确大于占位，用于验证省略与窗口行为。
+ * 一条历史工具调用，体积明确大于占位，用于验证省略与分层行为。
  * @param path - 参数路径。
  */
 function call(path: string): HistoricalEntry {
@@ -101,11 +101,11 @@ test('保护区外放不下时，可丢弃条目全部折叠为占位', () => {
     assert.deepEqual(result.map(label).slice(0, 2), ['user-message:user-instruction', 'omitted:20'])
 })
 
-test('超预算时从最旧一条起逐条出局，保留较新的', () => {
+test('超预算时逐层出局，保留较新的', () => {
     const half = Math.floor(ROOMY / 2)
     const entries = [call('a'), bigCall(half), bigCall(half + 100), ...manyFacts(RECENT_KEEP + 1)]
     const result = truncateHistory(entries, ROOMY)
-    // 保护区外的三条里，两条较旧的依次出局，较新的一条落在预算内被保留。
+    // 头部非权威层里，两条较旧的依次出局，较新的一条落在预算内被保留。
     assert.deepEqual(result.map(label).slice(0, 2), ['omitted:2', 'tool-call:fact'])
     const survivor = result[1]
     assert.equal(survivor?.kind === 'tool-call' ? survivor.arguments.length : 0, half + 100)
@@ -137,44 +137,22 @@ test('占位条目本身计入预算，超限时继续丢弃直到落进额度',
         ...Array.from({ length: 40 }, (_, index) => call(`f${String(index)}`)),
         ...manyFacts(RECENT_KEEP + 1),
     ]
-    const budget = 4096
+    const budget = 4200
     const result = truncateHistory(entries, budget)
     assert.ok(byteLength(JSON.stringify(result)) <= budget, '渲染结果应落在预算内')
     assert.equal(omittedCounts(result).length, 1)
 })
 
-test('权威角色加占位自身超限时，仍全留并如实超出预算', () => {
-    // 权威条目密集散布时，每丢一条就多一段占位，总量反而变大。
+test('底线自身超限时，全留并如实超出预算', () => {
+    // 末十条与待审调用不可剪裁：仅它们就超限时，结果如实越限，由调用方降级。
     const entries = [
-        ...Array.from({ length: 40 }, (_, index) => [
-            call(`f${String(index)}`),
-            user('constraint', `rule ${String(index)}`),
-        ]).flat(),
-        ...manyFacts(RECENT_KEEP + 1),
+        user('user-instruction', 'task'),
+        ...Array.from({ length: RECENT_KEEP + 1 }, () => bigCall(ROOMY)),
     ]
-    const budget = 8000
-    const result = truncateHistory(entries, budget)
-    // 权威角色与占位都不可再让，结果如实超出预算——这是既定取舍。
-    assert.ok(byteLength(JSON.stringify(result)) > budget)
-    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, PROTECTED)
-    assert.equal(result.filter(entry => entry.kind === 'user-message').length, 40)
-})
-
-test('占位段数越多，同样保留量下占用越大', () => {
-    // 两种排布丢弃同样数量的 fact，但权威条目的插入使占位被拆成更多段。
-    const compact = [
-        ...Array.from({ length: 30 }, (_, index) => call(`a${String(index)}`)),
-        ...manyFacts(RECENT_KEEP + 1),
-    ]
-    const fragmented = [
-        ...Array.from({ length: 30 }, (_, index) => [call(`b${String(index)}`), user('constraint', 'rule')]).flat(),
-        ...manyFacts(RECENT_KEEP + 1),
-    ]
-    const budget = 4096
-    const compactBytes = byteLength(JSON.stringify(truncateHistory(compact, budget)))
-    const fragmentedBytes = byteLength(JSON.stringify(truncateHistory(fragmented, budget)))
-    // 拆散后占位段更多，即便丢弃更多 fact 也难以压到同样小，故其字节数不会更小。
-    assert.ok(fragmentedBytes >= compactBytes)
+    const result = truncateHistory(entries, ROOMY)
+    assert.ok(byteLength(JSON.stringify(result)) > ROOMY)
+    assert.deepEqual(omittedCounts(result), [])
+    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, RECENT_KEEP + 1)
 })
 
 test('按 UTF-8 字节计：同样字数下中文条目比 ASCII 更快耗尽预算', () => {
@@ -190,41 +168,70 @@ test('按 UTF-8 字节计：同样字数下中文条目比 ASCII 更快耗尽预
     assert.deepEqual(omittedCounts(cjkRun), [1])
 })
 
-test('窗口只统计可丢弃条目，权威角色不占名额', () => {
-    const entries = [user('user-instruction', 'task'), ...manyFacts(HISTORY_WINDOW + 20)]
+test('条目数超过旧窗口上限时，预算内全部保留', () => {
+    // 旧的按条目数限流（128 条）已移除：字节预算放得下就全留，不论条数。
+    const entries = [user('user-instruction', 'task'), ...manyFacts(300)]
     const result = truncateHistory(entries, ROOMY)
+    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, 300)
+    assert.deepEqual(omittedCounts(result), [])
+})
+
+test('中间权威在中间非权威出尽后才出局，层内从旧到新', () => {
+    const entries = [
+        user('user-instruction', 'task'),
+        ...manyFacts(15),
+        ...Array.from({ length: 5 }, (_, index) => user('constraint', `rule ${String(index)}`)),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const result = truncateHistory(entries, 3750)
+    // 中间非权威全出局；中间权威自最旧起 c0、c1 出局，余下保留。
+    assert.deepEqual(omittedCounts(result), [7])
+    assert.equal(result.filter(entry => entry.kind === 'user-message' && entry.role === 'constraint').length, 3)
+})
+
+test('头部非权威是最后出局的层', () => {
+    const entries = [
+        user('user-instruction', 'task'),
+        ...manyFacts(10),
+        ...Array.from({ length: 10 }, (_, index) => call(`f${String(index + 10)}`)),
+        ...Array.from({ length: 5 }, (_, index) => user('constraint', `rule ${String(index)}`)),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const result = truncateHistory(entries, 3000)
+    // 中间两层全出局后，头部非权威才从最旧起出局；头部权威与末十条不动。
+    assert.deepEqual(omittedCounts(result), [4, 15])
     assert.equal(label(result[0]!), 'user-message:user-instruction')
-    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, HISTORY_WINDOW + PROTECTED)
-    assert.deepEqual(omittedCounts(result), [entries.length - PROTECTED - HISTORY_WINDOW - 1])
 })
 
-test('超出窗口的权威角色不被丢弃', () => {
-    const entries = [user('user-instruction', 'task'), ...manyFacts(HISTORY_WINDOW * 2)]
-    const result = truncateHistory(entries, ROOMY)
-    assert.equal(result[0]!.kind, 'user-message')
-    assert.equal(omittedCounts(result).length, 1)
-})
-
-test('四类权威角色都在裁剪中保留', () => {
+test('四类权威角色在裁剪中保留', () => {
     const roles: ReviewSourceRole[] = [
         'user-instruction',
         'direct-parent-instruction',
         'constraint',
         'checkpoint',
     ]
-    const entries = [...roles.map(role => user(role, role)), ...manyFacts(HISTORY_WINDOW * 2)]
-    const result = truncateHistory(entries, ROOMY)
+    const entries = [...roles.map(role => user(role, role)), ...manyFacts(64)]
+    const result = truncateHistory(entries, 5000)
     const keptRoles = result.flatMap(entry => entry.kind === 'user-message' ? [entry.role] : [])
     assert.deepEqual(keptRoles, roles)
 })
 
-test('缺口按连续段分别折叠，位置与原文对齐', () => {
-    const entries = [call('a'), call('b'), user('user-instruction', 'task'), ...manyFacts(HISTORY_WINDOW + 20)]
-    const result = truncateHistory(entries, ROOMY)
-    // 前两条 fact 与紧随其后被裁掉的 fact 被权威条目隔开，故有两处占位。
-    assert.equal(omittedCounts(result).length, 2)
-    assert.equal(label(result[0]!), 'omitted:2')
-    assert.equal(label(result[1]!), 'user-message:user-instruction')
+test('缺口按连续段分别折叠，被保留条目隔开', () => {
+    const entries = [
+        user('user-instruction', 'task'),
+        ...manyFacts(9),
+        call('f9'),
+        user('constraint', 'rule 0'),
+        call('f10'),
+        user('constraint', 'rule 1'),
+        ...Array.from({ length: 3 }, (_, index) => call(`f${String(11 + index)}`)),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const result = truncateHistory(entries, 3900)
+    // 中间非权威出局三条，被保留的权威隔开，故有两处占位。
+    assert.deepEqual(omittedCounts(result), [1, 2])
+    assert.equal(label(result[12]!), 'omitted:1')
+    assert.equal(label(result[14]!), 'omitted:2')
 })
 
 test('最后一条待审调用永不丢弃，即使它单独超出预算', () => {
@@ -235,21 +242,29 @@ test('最后一条待审调用永不丢弃，即使它单独超出预算', () =>
 })
 
 test('占位说明声明内容不可用，且角色为 fact', () => {
-    const entries = [...manyFacts(HISTORY_WINDOW + 20), call('pending')]
-    const [omitted] = truncateHistory(entries, ROOMY)
+    const entries = [...manyFacts(148), call('pending')]
+    const result = truncateHistory(entries, 0)
+    // 头部非权威随预算归零全部出局，缺口自第 1 条起。
+    const omitted = result[0]
     assert.equal(omitted?.kind, 'omitted')
     assert.equal(omitted?.role, 'fact')
     const count = omitted?.kind === 'omitted' ? omitted.count : 0
     assert.equal(omitted?.kind === 'omitted' ? omitted.text : '',
         `${String(count)} history item(s) omitted at this point; their content is unavailable.`)
-    assert.equal(count, omittedCounts(truncateHistory(entries, ROOMY))[0])
+    assert.equal(count, omittedCounts(result)[0])
 })
 
-test('预算为零时只有权威角色与保护区留下', () => {
-    const entries = [user('user-instruction', 'task'), ...manyFacts(HISTORY_WINDOW)]
+test('预算为零时只剩头部权威与末十条', () => {
+    const entries = [user('user-instruction', 'task'), ...manyFacts(64)]
     const result = truncateHistory(entries, 0)
+    assert.equal(label(result[0]!), 'user-message:user-instruction')
     assert.equal(result.filter(entry => entry.kind === 'tool-call').length, PROTECTED)
-    assert.equal(omittedCounts(result).length, 1)
+    assert.deepEqual(omittedCounts(result), [53])
+})
+
+test('历史过短时末十覆盖全部，永不剪裁', () => {
+    const entries = [user('user-instruction', 'task'), ...manyFacts(9)]
+    assert.deepEqual(truncateHistory(entries, 0), entries)
 })
 
 test('空历史返回空序列', () => {
@@ -288,7 +303,7 @@ test('钉住的小条目不计入占位开销', () => {
 })
 
 test('已开启缺口时，紧随的小条目仍被省略而非钉住', () => {
-    // 首个大条目触发省略，其后的小条目续接同一缺口。
+    // 首个大条目触发省略，其后的小条目续接同一缺口段。
     const entries = [
         user('user-instruction', 'task'),
         call('big'),
