@@ -5,6 +5,7 @@
     "tests/verdict.test.ts",
     "tests/log.test.ts",
     "tests/steps.test.ts",
-    "tests/roles.test.ts"
+    "tests/roles.test.ts",
+    "tests/reviewer.test.ts"
   ]
 }
