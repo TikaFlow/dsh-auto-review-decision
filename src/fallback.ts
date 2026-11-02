@@ -119,7 +119,7 @@ export class FallbackGuard {
     /** 一次审查失败后计数，达阈值则降级并按配置提示。 */
     failed(error: unknown): void {
         if (!isCountedFailure(error)) return
-        this.failures += 1
+        this.failures++
         if (this.failures < FALLBACK_FAILURE_THRESHOLD || this.degraded) return
         this.degraded = true
         const preset = this.target()

@@ -73,7 +73,7 @@ export function applyFallbackNotice(ctx: ClientContext): () => void {
         if (typeof parsed !== 'object' || parsed === null) return
         const preset = (parsed as { preset?: unknown }).preset
         if (typeof preset !== 'string') return
-        seq += 1
+        seq++
         store.set({ seq, preset })
     }
     const face: FallbackNoticeFace = {

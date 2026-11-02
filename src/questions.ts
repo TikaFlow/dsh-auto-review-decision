@@ -61,7 +61,7 @@ export function safetyOf(answer: Record<string, unknown>): SafetyMetrics {
         let safe = 0
         let high = 0
         let counted = false
-        for (let level = SAFE_LEVEL_START; level < SCORE_LEVELS; level += 1) {
+        for (let level = SAFE_LEVEL_START; level < SCORE_LEVELS; level++) {
             const value = values[String(level)]
             if (typeof value !== 'number' || !Number.isFinite(value)) continue
             counted = true
