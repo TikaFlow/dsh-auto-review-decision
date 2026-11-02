@@ -1,13 +1,7 @@
 {
   "extends": "./tsconfig.json",
-  "files": [
+  "include": [
     "src/index.ts",
-    "tests/verdict.test.ts",
-    "tests/log.test.ts",
-    "tests/steps.test.ts",
-    "tests/roles.test.ts",
-    "tests/reviewer.test.ts",
-    "tests/fallback-route.test.ts",
-    "tests/snapshot.test.ts"
+    "tests/**/*.test.ts"
   ]
 }

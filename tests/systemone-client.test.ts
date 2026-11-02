@@ -17,6 +17,7 @@ const QUESTIONS = {
 /** 一次调用的基础入参。 */
 const BASE = {
     baseURL: 'https://example.com/v1',
+    fullURL: false,
     model: 'm',
     apiKey: 'sk-test',
     signal: new AbortController().signal,
@@ -69,6 +70,7 @@ async function rejectsKind(
 test('端点、方法与请求头', async () => {
     calls.length = 0
     const result = await postDecision(request(), { ...BASE, fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })
+    assert.ok(result.answers.allow?.type === 'noul')
     assert.equal(result.answers.allow.noul, 0.93)
     assert.equal(calls[0]?.url, 'https://example.com/v1/systemone')
     assert.equal(calls[0]?.init.method, 'POST')
@@ -88,7 +90,9 @@ test('网关 result 信封解包', async () => {
         ...BASE,
         fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({ result: OK_BODY, success: true, errors: [], messages: [] }), { status: 200 }))),
     })
+    assert.ok(result.answers.allow?.type === 'noul')
     assert.equal(result.answers.allow.noul, 0.93)
+    assert.ok(result.answers.malice?.type === 'score')
     assert.equal(result.answers.malice.score, 3.4)
 })
 
