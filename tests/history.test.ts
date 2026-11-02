@@ -184,9 +184,9 @@ test('中间权威在中间非权威出尽后才出局，层内从旧到新', ()
         ...manyFacts(RECENT_KEEP + 1),
     ]
     const result = truncateHistory(entries, 3750)
-    // 中间非权威全出局；中间权威自最旧起 c0、c1 出局，余下保留。
-    assert.deepEqual(omittedCounts(result), [7])
-    assert.equal(result.filter(entry => entry.kind === 'user-message' && entry.role === 'constraint').length, 3)
+    // 中间非权威全出局；中间权威小段整体出局。
+    assert.deepEqual(omittedCounts(result), [10])
+    assert.equal(result.filter(entry => entry.kind === 'user-message' && entry.role === 'constraint').length, 0)
 })
 
 test('头部非权威是最后出局的层', () => {
@@ -327,4 +327,151 @@ test('大条目按省略处理，与钉住的小条目形成两段不同行为',
     // tinyCall('a') 钉住保留；call('big') 与 tinyCall('b') 连成一段缺口。
     assert.equal(result[1]?.kind, 'tool-call')
     assert.deepEqual(omittedCounts(result), [2])
+})
+
+/** 条目序列的总字节数。 */
+function totalBytes(entries: readonly HistoricalEntry[]): number {
+    return entries.reduce((sum, entry) => sum + byteLength(JSON.stringify(entry)), 0)
+}
+
+test('连续小条目段合计超过占位时整段出局，折叠为一条占位', () => {
+    // 权威条目后的连续小条目单条都钉住，但整段合计超过占位，应整体出局回收预算。
+    const entries = [
+        user('user-instruction', 'task'),
+        tinyCall('a'),
+        tinyCall('b'),
+        call('big'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const unitBytes = 2 * byteLength(JSON.stringify(tinyCall('a')))
+    // 预算恰好等于「整段出局并付出一条占位」后的总量：其后的大条目必须留在预算内。
+    const budget = totalBytes(entries) - unitBytes + PLACEHOLDER_BYTES
+    const result = truncateHistory(entries, budget)
+    assert.deepEqual(omittedCounts(result), [2])
+    assert.equal(label(result[1]!), 'omitted:2')
+    assert.equal(label(result[2]!), 'tool-call:fact')
+    assert.ok(totalBytes(result) <= budget, '渲染结果应落在预算内')
+})
+
+test('段合计不超过占位时逐条钉住，左邻被剪后免费并入缺口', () => {
+    // 大条目开启缺口后，紧随的小条目免费延伸；其后的大条目在预算内保留。
+    const entries = [
+        user('user-instruction', 'task'),
+        call('big-left'),
+        tinyCall('a'),
+        call('big-right'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const budget = totalBytes(entries)
+        - byteLength(JSON.stringify(call('big-left')))
+        - byteLength(JSON.stringify(tinyCall('a')))
+        + PLACEHOLDER_BYTES
+    const result = truncateHistory(entries, budget)
+    assert.deepEqual(omittedCounts(result), [2])
+    assert.equal(label(result[2]!), 'tool-call:fact')
+})
+
+test('单元左邻已剪时并入同一缺口，不重复计占位', () => {
+    // 大条目出局开启缺口，其后的连续小条目段整段免费延伸，不再付第二条占位。
+    const entries = [
+        user('user-instruction', 'task'),
+        call('big'),
+        tinyCall('a'),
+        tinyCall('b'),
+        call('tail'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const budget = totalBytes(entries)
+        - byteLength(JSON.stringify(call('big')))
+        - 2 * byteLength(JSON.stringify(tinyCall('a')))
+        + PLACEHOLDER_BYTES
+    const result = truncateHistory(entries, budget)
+    assert.deepEqual(omittedCounts(result), [3])
+    assert.equal(label(result[2]!), 'tool-call:fact')
+})
+
+test('权威小条目分隔的两个小条目段各自独立出局与计费', () => {
+    // 中间范围内非权威小段、权威小条目、非权威小段相邻；权威收段，两段各付一条占位。
+    const entries = [
+        user('user-instruction', 'task'),
+        ...manyFacts(10),
+        tinyCall('a'),
+        tinyCall('b'),
+        user('constraint', 'rule'),
+        tinyCall('c'),
+        tinyCall('d'),
+        call('big'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const unitBytes = 2 * byteLength(JSON.stringify(tinyCall('a')))
+    const budget = totalBytes(entries) - 2 * unitBytes + 2 * PLACEHOLDER_BYTES
+    const result = truncateHistory(entries, budget)
+    assert.deepEqual(omittedCounts(result), [2, 2])
+    const keptUsers = result.filter(entry => entry.kind === 'user-message')
+    assert.deepEqual(keptUsers.map(entry => entry.role), ['user-instruction', 'constraint'])
+})
+
+test('跨头部与中间分界的连续小条目分属两段，各自按层出局', () => {
+    // 头部末尾与中间开头的小条目相邻，但分界收段：头部段钉住保留，中间段整段出局。
+    const entries = [
+        user('user-instruction', 'task'),
+        ...manyFacts(9),
+        tinyCall('head'),
+        tinyCall('mid-a'),
+        tinyCall('mid-b'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const midBytes = 2 * byteLength(JSON.stringify(tinyCall('mid-a')))
+    const budget = totalBytes(entries) - midBytes + PLACEHOLDER_BYTES
+    const result = truncateHistory(entries, budget)
+    assert.deepEqual(omittedCounts(result), [2])
+    assert.equal(label(result[1]!), 'tool-call:fact')
+    assert.equal(label(result[10]!), 'tool-call:fact')
+    assert.equal(label(result[11]!), 'omitted:2')
+})
+
+test('头部权威分隔的两个小条目段各自独立出局', () => {
+    // 头部权威永不出局，也终结小条目段：两段各自计费。
+    const entries = [
+        user('user-instruction', 'task'),
+        tinyCall('a'),
+        tinyCall('b'),
+        user('checkpoint', 'keep'),
+        tinyCall('c'),
+        tinyCall('d'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ]
+    const unitBytes = 2 * byteLength(JSON.stringify(tinyCall('a')))
+    const budget = totalBytes(entries) - 2 * unitBytes + 2 * PLACEHOLDER_BYTES
+    const result = truncateHistory(entries, budget)
+    assert.deepEqual(omittedCounts(result), [2, 2])
+    const keptUsers = result.filter(entry => entry.kind === 'user-message')
+    assert.deepEqual(keptUsers.map(entry => entry.role), ['user-instruction', 'checkpoint'])
+})
+
+test('段起始于下标 0 时正常计费出局', () => {
+    // 段首没有左邻：按开启新缺口计一条占位。
+    const entries = [tinyCall('a'), tinyCall('b'), call('big'), ...manyFacts(RECENT_KEEP + 1)]
+    const unitBytes = 2 * byteLength(JSON.stringify(tinyCall('a')))
+    const budget = totalBytes(entries) - unitBytes + PLACEHOLDER_BYTES
+    const result = truncateHistory(entries, budget)
+    assert.deepEqual(omittedCounts(result), [2])
+    assert.equal(label(result[1]!), 'tool-call:fact')
+})
+
+test('小条目段不跨越 undefined 孔', () => {
+    // 孔位终结段：两侧小条目各自独立判定并钉住，孔不参与计费。
+    const entries = [
+        user('user-instruction', 'task'),
+        tinyCall('a'),
+        undefined,
+        tinyCall('b'),
+        call('big'),
+        ...manyFacts(RECENT_KEEP + 1),
+    ] as unknown as HistoricalEntry[]
+    const budget = totalBytes(entries) - byteLength(JSON.stringify(call('big'))) + PLACEHOLDER_BYTES
+    const result = truncateHistory(entries, budget)
+    assert.deepEqual(omittedCounts(result), [1])
+    assert.equal(label(result[1]!), 'tool-call:fact')
+    assert.equal(label(result[2]!), 'tool-call:fact')
 })
