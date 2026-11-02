@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { test } from 'node:test'
 import { ToolCallId, createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
@@ -19,9 +20,9 @@ import type { ReviewVerdict } from '../src/questions.ts'
 import { SCORE_QUESTION_IDS } from '../src/shared/questions.ts'
 import type { SystemOneResponse } from '../src/systemone.ts'
 
-/** 从源文件原样提取 REVIEW_POLICY，避免复制旧文本。 */
+/** 从源文件原样提取 REVIEW_POLICY，避免复制旧文本；源码读取以包根为基准，兼容编译产物运行。 */
 const REVIEW_POLICY = (() => {
-    const source = readFileSync(new URL('../src/reviewer.ts', import.meta.url), 'utf8')
+    const source = readFileSync(resolve(process.cwd(), 'src/reviewer.ts'), 'utf8')
     const match = /const REVIEW_POLICY = `([^`]+)`/u.exec(source)
     assert.ok(match !== null, 'REVIEW_POLICY 未在源文件中找到')
     return match[1]
@@ -42,9 +43,17 @@ let configValues: Record<string, unknown> = {
     onApiUnavailable: 'workspace-write',
     notifyOnFallback: true,
 }
-setConfigInput(() => configValues)
 
-test.after(() => { setConfigInput(() => undefined) })
+/**
+ * 单进程合跑时模块级配置会跨文件串扰：每条用例运行前挂载本文件配置、结束后还原，
+ * 使环境配置在用例之间回到未设置状态。
+ */
+const configTest = (name: string, fn: () => unknown): void => {
+    test(name, async () => {
+        setConfigInput(() => configValues)
+        try { await fn() } finally { setConfigInput(() => undefined) }
+    })
+}
 
 /** reviewer 只消费 credentials.resolve 与 workingDirectory.ensure，stub 仅含这两者。 */
 function makeCtx(credential: ResolvedCredential | undefined): Context {
@@ -153,7 +162,7 @@ async function reviewOnce(
     return { verdict, calls }
 }
 
-test('请求体携带环境、策略原文、问题表与待审调用，密钥只出现在 Authorization 头', async () => {
+configTest('请求体携带环境、策略原文、问题表与待审调用，密钥只出现在 Authorization 头', async () => {
     const { session, exec } = makeReviewSession()
     const { verdict, calls } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
     assert.equal(verdict.kind, 'allow')
@@ -175,7 +184,7 @@ test('请求体携带环境、策略原文、问题表与待审调用，密钥�
     assert.ok(!String(init.body).includes(API_KEY))
 })
 
-test('history 依次携带用户指令、模型说明、工具 schema 与历史调用', async () => {
+configTest('history 依次携带用户指令、模型说明、工具 schema 与历史调用', async () => {
     const { session, exec } = makeReviewSession()
     const { calls } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
     const body = JSON.parse(String(calls[0]!.init.body)) as {
@@ -194,7 +203,7 @@ test('history 依次携带用户指令、模型说明、工具 schema 与历史�
     assert.equal(history[1]!.text, '我来删除临时文件')
 })
 
-test('待审调用的 schema 已登记到 shown，供后续审查复用', async () => {
+configTest('待审调用的 schema 已登记到 shown，供后续审查复用', async () => {
     const { session, exec } = makeReviewSession()
     const shown = new Map()
     const { calls, fetch } = capturingFetch(() => okResponse(answersWith(1)))
@@ -206,26 +215,26 @@ test('待审调用的 schema 已登记到 shown，供后续审查复用', async 
     assert.ok(calls.length === 1)
 })
 
-test('全部问题通过判定线时结论为 allow', async () => {
+configTest('全部问题通过判定线时结论为 allow', async () => {
     const { session, exec } = makeReviewSession()
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
     assert.deepEqual(verdict, { kind: 'allow' })
 })
 
-test('总判定问题低于拒绝线时直接 deny', async () => {
+configTest('总判定问题低于拒绝线时直接 deny', async () => {
     const { session, exec } = makeReviewSession()
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(0.1)))
     assert.deepEqual(verdict, { kind: 'deny', reason: '该调用未通过安全审查' })
 })
 
-test('总分不足且高于拒绝线时落为 ask 并携带问题标签', async () => {
+configTest('总分不足且高于拒绝线时落为 ask 并携带问题标签', async () => {
     const { session, exec } = makeReviewSession()
     // noul 足够高进入补偿通道，但 malice 的安全侧全押在「不确定」档：不满足放行、高于拒绝线。
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(0.9, { id: 'malice', probabilities: { '2': 1 } })))
     assert.deepEqual(verdict, { kind: 'ask', reason: '存在恶意意图，是否执行？' })
 })
 
-test('参数明显违反契约时直接放行，不发出决策请求', async () => {
+configTest('参数明显违反契约时直接放行，不发出决策请求', async () => {
     const { session, exec } = makeReviewSession('{"path":123}')
     const { calls, fetch } = capturingFetch(() => { throw new Error('must not be called') })
     const verdict = await classifyRisk(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
@@ -233,7 +242,7 @@ test('参数明显违反契约时直接放行，不发出决策请求', async ()
     assert.equal(calls.length, 0)
 })
 
-test('用户白名单命中的工具免审且不发出决策请求', async () => {
+configTest('用户白名单命中的工具免审且不发出决策请求', async () => {
     const { session, exec } = makeReviewSession()
     configValues.toolWhitelist = ['probe']
     try {
@@ -246,7 +255,7 @@ test('用户白名单命中的工具免审且不发出决策请求', async () =>
     }
 })
 
-test('HTTP 非 200 归类为 status 失败并携带响应摘要', async () => {
+configTest('HTTP 非 200 归类为 status 失败并携带响应摘要', async () => {
     const { session, exec } = makeReviewSession()
     await assert.rejects(
         reviewOnce(session, exec, () => new Response(JSON.stringify({ error: 'server exploded' }), { status: 500 })),
@@ -261,7 +270,7 @@ test('HTTP 非 200 归类为 status 失败并携带响应摘要', async () => {
     )
 })
 
-test('200 但响应非协议结构时归类为 field 失败', async () => {
+configTest('200 但响应非协议结构时归类为 field 失败', async () => {
     const { session, exec } = makeReviewSession()
     await assert.rejects(
         reviewOnce(session, exec, () => new Response(JSON.stringify({ result: { model: 'x' } }), { status: 200 })),
@@ -273,7 +282,7 @@ test('200 但响应非协议结构时归类为 field 失败', async () => {
     )
 })
 
-test('200 但响应不是 JSON 时归类为 parse 失败', async () => {
+configTest('200 但响应不是 JSON 时归类为 parse 失败', async () => {
     const { session, exec } = makeReviewSession()
     await assert.rejects(
         reviewOnce(session, exec, () => new Response('<html>gateway</html>', { status: 200 })),
@@ -285,7 +294,7 @@ test('200 但响应不是 JSON 时归类为 parse 失败', async () => {
     )
 })
 
-test('网络失败归类为 network，错误信息不含密钥', async () => {
+configTest('网络失败归类为 network，错误信息不含密钥', async () => {
     const { session, exec } = makeReviewSession()
     const { fetch } = capturingFetch(() => { throw new Error('connection refused') })
     await assert.rejects(
@@ -300,7 +309,7 @@ test('网络失败归类为 network，错误信息不含密钥', async () => {
     )
 })
 
-test('凭据未配置时归类为 config 失败且不发请求', async () => {
+configTest('凭据未配置时归类为 config 失败且不发请求', async () => {
     const { session, exec } = makeReviewSession()
     const { calls, fetch } = capturingFetch(() => { throw new Error('must not be called') })
     await assert.rejects(
@@ -315,7 +324,7 @@ test('凭据未配置时归类为 config 失败且不发请求', async () => {
     assert.equal(calls.length, 0)
 })
 
-test('必填配置缺失时归类为 config 失败', async () => {
+configTest('必填配置缺失时归类为 config 失败', async () => {
     const { session, exec } = makeReviewSession()
     const saved = configValues
     configValues = {}
@@ -334,7 +343,7 @@ test('必填配置缺失时归类为 config 失败', async () => {
     }
 })
 
-test('计入降级的失败连续累计，达阈值降级一次且不重复发布', () => {
+configTest('计入降级的失败连续累计，达阈值降级一次且不重复发布', () => {
     const published: string[] = []
     const guard = new FallbackGuard({ sessions: { list: () => [] } } as unknown as Context, () => 'workspace-write', () => true, (preset) => { published.push(preset) })
     const counted = new SystemOneCallError(FAILURE.network, 'down')
@@ -346,7 +355,7 @@ test('计入降级的失败连续累计，达阈值降级一次且不重复发�
     assert.deepEqual(published, ['workspace-write'])
 })
 
-test('中止类失败与非协议错误不计入降级计数', () => {
+configTest('中止类失败与非协议错误不计入降级计数', () => {
     const published: string[] = []
     const guard = new FallbackGuard({ sessions: { list: () => [] } } as unknown as Context, () => 'workspace-write', () => false, (preset) => { published.push(preset) })
     const aborted = new SystemOneCallError(FAILURE.aborted, 'stopped')
@@ -356,7 +365,7 @@ test('中止类失败与非协议错误不计入降级计数', () => {
     assert.deepEqual(published, [])
 })
 
-test('成功清零计数：失败后成功再失败不累计降级', () => {
+configTest('成功清零计数：失败后成功再失败不累计降级', () => {
     const published: string[] = []
     const guard = new FallbackGuard({ sessions: { list: () => [] } } as unknown as Context, () => 'workspace-write', () => true, (preset) => { published.push(preset) })
     const counted = new SystemOneCallError(FAILURE.network, 'down')
@@ -366,7 +375,7 @@ test('成功清零计数：失败后成功再失败不累计降级', () => {
     assert.deepEqual(published, [])
 })
 
-test('降级去向为 system 时实时读取宿主默认预设', () => {
+configTest('降级去向为 system 时实时读取宿主默认预设', () => {
     const published: string[] = []
     const guard = new FallbackGuard({
         sessions: { list: () => [] },
@@ -377,7 +386,7 @@ test('降级去向为 system 时实时读取宿主默认预设', () => {
     assert.deepEqual(published, ['read-only'])
 })
 
-test('classifyRisk 成功路径不打扰未安装的守卫', async () => {
+configTest('classifyRisk 成功路径不打扰未安装的守卫', async () => {
     const { session, exec } = makeReviewSession()
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
     assert.equal(verdict.kind, 'allow')

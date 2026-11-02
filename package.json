@@ -24,6 +24,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsdown",
+    "test": "tsc --noCheck -p tsconfig.test.build.json && node .test-dist/tests/index.test.js",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

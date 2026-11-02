@@ -19,9 +19,13 @@ let configValues: Record<string, unknown> = {
     onApiUnavailable: 'workspace-write',
     notifyOnFallback: true,
 }
-setConfigInput(() => configValues)
 
-test.after(() => { setConfigInput(() => undefined) })
+const configTest = (name: string, fn: () => unknown): void => {
+    test(name, async () => {
+        setConfigInput(() => configValues)
+        try { await fn() } finally { setConfigInput(() => undefined) }
+    })
+}
 
 interface RegisteredRoute {
     readonly methods: readonly string[]
@@ -83,14 +87,14 @@ function reselectAuto(ctx: Context): void {
     } as unknown as SessionEvent)
 }
 
-test('没有连接服务的 profile 不注册路由但守卫仍然可用', async () => {
+configTest('没有连接服务的 profile 不注册路由但守卫仍然可用', async () => {
     const ctx = new Context()
     applyFallback(ctx)
     await flush()
     assert.ok(getGuard() !== undefined)
 })
 
-test('路由随连接注册为 GET，连接注销后路由解除', async () => {
+configTest('路由随连接注册为 GET，连接注销后路由解除', async () => {
     const { ctx, routes, unregisterConnection } = makeCtx()
     applyFallback(ctx)
     await flush()
@@ -102,7 +106,7 @@ test('路由随连接注册为 GET，连接注销后路由解除', async () => {
     assert.ok(!routes.has(NOTICE_ROUTE), '连接注销后路由仍存在')
 })
 
-test('降级触发时向订阅流推送预设名事件', async () => {
+configTest('降级触发时向订阅流推送预设名事件', async () => {
     const { ctx, routes } = makeCtx()
     applyFallback(ctx)
     await flush()
@@ -111,7 +115,7 @@ test('降级触发时向订阅流推送预设名事件', async () => {
     assert.equal(await readFrame(reader), 'data: {"preset":"workspace-write"}\n\n')
 })
 
-test('notifyOnFallback 为假时降级不推送', async () => {
+configTest('notifyOnFallback 为假时降级不推送', async () => {
     const { ctx, routes } = makeCtx()
     applyFallback(ctx)
     await flush()
@@ -129,7 +133,7 @@ test('notifyOnFallback 为假时降级不推送', async () => {
     }
 })
 
-test('多个订阅者各自收到同一事件且互不影响', async () => {
+configTest('多个订阅者各自收到同一事件且互不影响', async () => {
     const { ctx, routes } = makeCtx()
     applyFallback(ctx)
     await flush()
@@ -142,7 +146,7 @@ test('多个订阅者各自收到同一事件且互不影响', async () => {
     assert.equal(await readFrame(second.reader), frame)
 })
 
-test('订阅中止后流关闭，后续通知不再投递且不残留监听', async () => {
+configTest('订阅中止后流关闭，后续通知不再投递且不残留监听', async () => {
     const { ctx, routes } = makeCtx()
     applyFallback(ctx)
     await flush()
