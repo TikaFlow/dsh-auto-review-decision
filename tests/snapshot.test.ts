@@ -4,7 +4,7 @@ import { ToolCallId, createAssistantMessage, createSystemMessage, createToolResu
 import type { ContentBlock, MessageSource, ToolSchema } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import { Session, SessionId, type SessionSeq } from '@deepseek-ai/dsh-session'
+import { Session, SessionId, type SessionEvent, type SessionSeq } from '@deepseek-ai/dsh-session'
 import { snapshotAutoReview } from '../src/snapshot.ts'
 import type { HistoricalEntry, HistoricalToolSchema, ReviewSnapshot } from '../src/types.ts'
 
@@ -12,6 +12,18 @@ const PROBE_SCHEMA: ToolSchema = {
     name: 'probe',
     description: 'live probe description',
     parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+}
+
+const INNER_SCHEMA: ToolSchema = {
+    name: 'inner-tool',
+    description: 'inner tool binding description',
+    parameters: { type: 'object', properties: { code: { type: 'string' } }, required: ['code'] },
+}
+
+const RUN_CODE_SCHEMA: ToolSchema = {
+    name: 'run_code',
+    description: 'run code description',
+    parameters: { type: 'object', properties: { code: { type: 'string' } }, required: ['code'] },
 }
 
 function makeSession(): Session {
@@ -51,8 +63,29 @@ function appendAssistant(session: Session, turn: number, step: number, content: 
     }, { surfaceOp: 'append' })
 }
 
-function appendCall(session: Session, turn: number, step: number, callId: string, argumentsText = '{"path":"a.txt"}'): void {
-    session.append('tool/call', { turn, step, callId: ToolCallId(callId), name: 'probe', arguments: argumentsText })
+function appendCall(session: Session, turn: number, step: number, callId: string, name = 'probe', argumentsText = '{"path":"a.txt"}'): void {
+    session.append('tool/call', { turn, step, callId: ToolCallId(callId), name, arguments: argumentsText })
+}
+
+/**
+ * 追加一条 PTC 派发起始事件。该事件类型由上游 PTC 运行时写入，安装的
+ * dsh-session 类型未含此成员（运行时事件表收录），测试侧显式声明其数据形状。
+ */
+function appendPtcStart(session: Session, turn: number, step: number, subCallId: string, parentCallId: string): void {
+    const append = session.append as unknown as (
+        type: 'tool/ptc-dispatch-start',
+        data: { turn: number; step: number; subCallId: ToolCallId; parentCallId: ToolCallId; rootCallId: ToolCallId; name: string; arguments: unknown },
+    ) => SessionEvent
+    // session.append 依赖实例状态，绕过缺失的类型增广时必须显式绑定 this。
+    append.call(session, 'tool/ptc-dispatch-start', {
+        turn,
+        step,
+        subCallId: ToolCallId(subCallId),
+        parentCallId: ToolCallId(parentCallId),
+        rootCallId: ToolCallId(parentCallId),
+        name: 'inner-tool',
+        arguments: { code: 'return 1' },
+    })
 }
 
 function nativeExec(callId: string): ToolExecution {
@@ -61,6 +94,30 @@ function nativeExec(callId: string): ToolExecution {
         rootCallId: ToolCallId(callId),
         name: 'probe',
         arguments: { path: 'a.txt' },
+        signal: new AbortController().signal,
+    } as ToolExecution
+}
+
+/** 组装「PTC 内层待执行动作」：带绑定 schema 与不透明父令牌。 */
+function ptcExec(callId: string, rootCallId: string): ToolExecution {
+    return {
+        callId: ToolCallId(callId),
+        rootCallId: ToolCallId(rootCallId),
+        parent: Symbol('ptc-parent') as ToolExecution['parent'],
+        name: 'inner-tool',
+        arguments: { code: 'return 1' },
+        schema: INNER_SCHEMA,
+        signal: new AbortController().signal,
+    } as ToolExecution
+}
+
+/** 组装「外层 run_code 根调用」的原生待执行动作。 */
+function runCodeExec(callId: string): ToolExecution {
+    return {
+        callId: ToolCallId(callId),
+        rootCallId: ToolCallId(callId),
+        name: 'run_code',
+        arguments: { code: 'return 1' },
         signal: new AbortController().signal,
     } as ToolExecution
 }
@@ -249,4 +306,141 @@ test('第二次审查完整包含第一次条目且同名 schema 只出现一次
     assert.deepEqual(second.history.slice(0, first.history.length), [...first.history])
     assert.equal(second.history.filter(entry => entry.kind === 'tool-schema').length, 1)
     assert.ok(Object.isFrozen(second))
+})
+
+test('PTC 内层调用按派发记录与绑定 schema 送审，外层 run_code 进历史', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '执行内层代码' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'text', text: '我来派发内层工具' },
+        { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+    const snapshot = freeze(session, ptcExec('sub-1', 'root-1'))
+    assert.equal(snapshot.pending.key, ['ptc-inner', 1, 1, 'sub-1'].join('\0'))
+    assert.equal(snapshot.pending.schema.mode, 'ptc-inner')
+    assert.equal(snapshot.pending.schema.name, 'inner-tool')
+    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'assistant-claim', 'tool-call', 'tool-schema', 'tool-call'])
+    const rootCall = asToolCall(snapshot.history[2]!)
+    assert.equal(rootCall.mode, 'native')
+    assert.equal(rootCall.name, 'run_code')
+    assert.equal(rootCall.arguments, '{"code":"return 1"}')
+    const pendingCall = asToolCall(snapshot.history[4]!)
+    assert.equal(pendingCall.mode, 'ptc-inner')
+    assert.equal(pendingCall.arguments, JSON.stringify({ code: 'return 1' }, null, 2))
+})
+
+test('native callId 跨步骤复用按步骤作用域区分：旧调用进历史、当前调用为待审', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '分两步处理' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('dup'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 1, 'dup')
+    openStep(session, 1, 2)
+    appendAssistant(session, 1, 2, [
+        { type: 'tool-call', id: ToolCallId('dup'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 2, 'dup')
+    const snapshot = freeze(session, nativeExec('dup'))
+    assert.equal(snapshot.pending.key, ['native', 1, 2, 'dup'].join('\0'))
+    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'tool-call', 'tool-schema', 'tool-call'])
+    assert.equal(asToolCall(snapshot.history[1]!).mode, 'native')
+})
+
+test('同一步骤内 callId 重复记录判为原生调用歧义', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '先做一步' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('dup'), name: 'probe', arguments: '{"path":"a.txt"}' },
+    ])
+    appendCall(session, 1, 1, 'dup')
+    appendCall(session, 1, 1, 'dup')
+    const exec = seedPendingCall(session, 'call-1', 1, 2)
+    assert.throws(() => freeze(session, exec), /a native call identity is ambiguous in the session log/)
+})
+
+test('subCallId 跨步骤复用不歧义：旧派发进历史、当前派发为待审', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '分两步执行内层调用' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+    openStep(session, 1, 2)
+    appendAssistant(session, 1, 2, [
+        { type: 'tool-call', id: ToolCallId('root-2'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendCall(session, 1, 2, 'root-2', 'run_code', '{"code":"return 1"}')
+    appendPtcStart(session, 1, 2, 'sub-1', 'root-2')
+    const snapshot = freeze(session, ptcExec('sub-1', 'root-2'))
+    assert.equal(snapshot.pending.key, ['ptc-inner', 1, 2, 'sub-1'].join('\0'))
+    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'tool-call', 'tool-call', 'tool-call', 'tool-schema', 'tool-call'])
+    const oldDispatch = asToolCall(snapshot.history[2]!)
+    assert.equal(oldDispatch.mode, 'ptc-inner')
+    assert.equal(oldDispatch.name, 'inner-tool')
+})
+
+test('同一 subCallId 在同一步骤二次派发判为 PTC 身份歧义', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '派发内层调用' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+    assert.throws(() => freeze(session, ptcExec('sub-1', 'root-1')), /a PTC call identity is ambiguous in the session log/)
+})
+
+test('PTC 待审动作缺少派发记录判为缺失或歧义', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '派发内层调用' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+    assert.throws(() => freeze(session, ptcExec('sub-1', 'root-1')), /the pending PTC call is missing or ambiguous in the session log/)
+})
+
+test('无打开步骤的派发记录判为无归属步骤', () => {
+    const session = makeSession()
+    appendHeader(session, [PROBE_SCHEMA])
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+    assert.throws(() => freeze(session, ptcExec('sub-1', 'root-1')), /a PTC call has no owning step in the session log/)
+})
+
+test('外层 run_code 待审时其下已记录派发以 PTC 内层条目进历史', () => {
+    const session = makeSession()
+    appendHeader(session, [RUN_CODE_SCHEMA])
+    appendUser(session, [{ type: 'text', text: '执行内层代码' }], { kind: 'user' })
+    openStep(session, 1, 1)
+    appendAssistant(session, 1, 1, [
+        { type: 'tool-call', id: ToolCallId('root-1'), name: 'run_code', arguments: '{"code":"return 1"}' },
+    ])
+    appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
+    appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
+    const snapshot = freeze(session, runCodeExec('root-1'))
+    assert.equal(snapshot.pending.key, ['native', 1, 1, 'root-1'].join('\0'))
+    assert.equal(snapshot.pending.schema.mode, 'native')
+    assert.equal(snapshot.pending.schema.name, 'run_code')
+    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'tool-call', 'tool-schema', 'tool-call'])
+    const dispatchEntry = asToolCall(snapshot.history[1]!)
+    assert.equal(dispatchEntry.mode, 'ptc-inner')
+    assert.equal(dispatchEntry.name, 'inner-tool')
+    assert.equal(dispatchEntry.arguments, JSON.stringify({ code: 'return 1' }, null, 2))
 })
