@@ -6,6 +6,7 @@
     "tests/log.test.ts",
     "tests/steps.test.ts",
     "tests/roles.test.ts",
-    "tests/reviewer.test.ts"
+    "tests/reviewer.test.ts",
+    "tests/fallback-route.test.ts"
   ]
 }
