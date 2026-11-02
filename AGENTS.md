@@ -9,8 +9,8 @@ DSH 插件：以 SystemOne 决策接口审查每次工具调用，服务于仅�
 ## 命令
 
 - `pnpm build` — `tsc -p tsconfig.build.json && tsdown`
-- `pnpm typecheck` — `tsc --noEmit`
-- 无测试脚本；用例在 `tests/`（`*.spec.ts` / `*.test.ts` / `*.e2e.ts`）。
+- `pnpm test` — `tsc -p tsconfig.test.build.json && node .test-dist/tests/index.test.js`；`tests/index.test.ts` 是唯一入口，新增测试文件须在该入口 import
+- `pnpm typecheck` — `tsc --noEmit`，只检查 `src`
 
 ## 结构
 
@@ -19,9 +19,13 @@ Node 半与浏览器半分离：`src/*` 进 `lib/index.js`，`src/client/*` 进 
 | 文件 | 职责 |
 |---|---|
 | `src/index.ts` | 插件入口：`name` / `inject` / `Config` / `apply` |
+| `src/types.ts` | 插件共用类型定义 |
 | `src/lifecycle.ts` | 闸门接线：`tools/pre-execute` 前置审查、Auto 预设注册、卸载排空 |
 | `src/reviewer.ts` | 审查主体：凭据、工作目录、快照、请求、判定 |
 | `src/snapshot.ts` | 从会话日志冻结审查输入 |
+| `src/history.ts` | 审查历史分层裁剪与折叠占位 |
+| `src/budget.ts` | token 预算自校准：token 因子与字节上限 |
+| `src/fixed-overhead.ts` | 无法裁剪的固定 state 开销计量 |
 | `src/roles.ts` | 会话条目来源角色归类 |
 | `src/steps.ts` | 回合/步骤身份与作用域键 |
 | `src/log.ts` | 会话日志读取工具 |
@@ -30,6 +34,7 @@ Node 半与浏览器半分离：`src/*` 进 `lib/index.js`，`src/client/*` 进 
 | `src/questions.ts` | 问题表判定规则 |
 | `src/systemone.ts` | 决策接口线协议类型 |
 | `src/systemone-client.ts` | 决策接口 HTTP 调用与响应校验 |
+| `src/probe.ts` | 决策端点连通性测试 |
 | `src/verdict.ts` | 结论落地为工具流水线决定 |
 | `src/fallback.ts` | 连续失败降级与提示推送 |
 | `src/session-exit.ts` | Auto 会话退出去向 |
@@ -37,6 +42,8 @@ Node 半与浏览器半分离：`src/*` 进 `lib/index.js`，`src/client/*` 进 
 | `src/locales.ts` | 审查理由与提示文案 |
 | `src/shared/config.ts` | 配置常量与纯函数（两半共用） |
 | `src/shared/questions.ts` | 问题 id、问法、因子（纯数据） |
+| `src/shared/bytes.ts` | UTF-8 字节计量 |
+| `src/shared/tools.ts` | 对象记录判定工具 |
 | `src/client/*` | 设置卡片：控制器、样式、文案、预设名 |
 | `locale/*.json` | 中英文案 |
 | `docs/systemone-protocol.md` | 决策接口协议 |
