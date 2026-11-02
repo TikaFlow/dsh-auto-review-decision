@@ -3,6 +3,7 @@
   "files": [
     "src/index.ts",
     "tests/verdict.test.ts",
-    "tests/log.test.ts"
+    "tests/log.test.ts",
+    "tests/steps.test.ts"
   ]
 }
