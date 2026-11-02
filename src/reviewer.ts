@@ -32,6 +32,12 @@ The assigned role of each retained history item governs its authority: "user-ins
 
 Judge the pending action by what its name and arguments will actually do. An effect stays in scope when the project contains it, when the current task requires it, or when the current task explicitly authorizes it; any one of these is enough. Cleanup keeps its session-created exception only at the exact object that historical facts establish the agent created. Sensitive exfiltration across a trust boundary, production access, and irreversible or security-relevant effects outrank ordinary project work, and ambiguous effects call for denial. A call serving the established task is authorized.`
 
+/** 一次审查调用的可注入依赖；字段缺省即走默认实现。 */
+export interface ReviewDeps {
+    /** 注入的 fetch，透传给决策接口调用；缺省走全局 fetch。 */
+    readonly fetchImpl?: typeof fetch
+}
+
 /** 按固定策略向决策模型审查一个已冻结的待执行动作，并上报降级计数。 */
 export async function classifyRisk(
     ctx: Context,
@@ -39,9 +45,10 @@ export async function classifyRisk(
     exec: ToolExecution,
     signal: AbortSignal,
     shown: ShownSchemas,
+    deps?: ReviewDeps,
 ): Promise<ReviewVerdict> {
     try {
-        const verdict = await review(ctx, agent, exec, signal, shown)
+        const verdict = await review(ctx, agent, exec, signal, shown, deps)
         getGuard()?.succeeded()
         return verdict
     } catch (error: unknown) {
@@ -58,6 +65,7 @@ async function review(
     exec: ToolExecution,
     signal: AbortSignal,
     shown: ShownSchemas,
+    deps?: ReviewDeps,
 ): Promise<ReviewVerdict> {
     const config = getReviewConfig()
     if (config.missing.length > 0) {
@@ -115,6 +123,7 @@ async function review(
         model: config.values.model,
         apiKey: credential.value,
         signal,
+        fetchImpl: deps?.fetchImpl,
         metrics,
     })
     // 只有拿到有效 token 数才观测：字节数与 token 数必须同源配对。
