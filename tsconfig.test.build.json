@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.test.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".test-dist",
+    "rootDir": "."
+  },
+  "files": [
+    "src/index.ts",
+    "tests/index.test.ts"
+  ]
+}

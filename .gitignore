@@ -8,6 +8,7 @@ lib/
 
 # 测试与覆盖率产物
 coverage/
+.test-dist/
 
 # 编辑器与操作系统
 .vscode/
