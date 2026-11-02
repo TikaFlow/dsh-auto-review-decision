@@ -9,7 +9,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'
 import { getReviewConfig } from './config.ts'
-import { exitAutoSessions } from './session-exit.ts'
+import { exitAutoSessions, resolveExitTarget } from './session-exit.ts'
 import { CONFIG_NS, FALLBACK_FAILURE_THRESHOLD, NOTICE_ROUTE } from './shared/config.ts'
 import { SystemOneCallError } from './systemone-client.ts'
 
@@ -122,7 +122,7 @@ export class FallbackGuard {
         this.failures++
         if (this.failures < FALLBACK_FAILURE_THRESHOLD || this.degraded) return
         this.degraded = true
-        const preset = this.target()
+        const preset = resolveExitTarget(this.ctx, this.target())
         exitAutoSessions(this.ctx, preset)
         if (this.notify()) this.publish(preset)
     }

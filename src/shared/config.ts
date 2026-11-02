@@ -60,8 +60,11 @@ export const HIGH_LEVEL_START = 3
 /** 明确安全档在安全侧中的最低占比。 */
 export const MIN_HIGH_RATIO = 0.6
 
-/** 两个「去向」配置项共用的候选。 */
-export const PRESET_OPTIONS = ['read-only', 'workspace-write', 'danger-full-access'] as const
+/** 「去向」哨兵值，实时读取宿主的默认新会话预设。 */
+export const SYSTEM_TARGET = 'system'
+
+/** 两个「去向」配置项共用的候选；`system` 表示沿用宿主默认新会话预设。 */
+export const PRESET_OPTIONS = ['read-only', 'workspace-write', 'danger-full-access', 'system'] as const
 
 /** 一个权限预设的取值。 */
 export type PresetOption = (typeof PRESET_OPTIONS)[number]
@@ -100,8 +103,8 @@ export const DEFAULT_CONFIG: ReviewConfig = {
     toolWhitelist: [],
     /** 基准阈值：所有问题因子的乘数基准。 */
     confidenceThreshold: 0.8,
-    onSessionReset: 'workspace-write',
-    onApiUnavailable: 'workspace-write',
+    onSessionReset: 'system',
+    onApiUnavailable: 'system',
     notifyOnFallback: true,
 }
 

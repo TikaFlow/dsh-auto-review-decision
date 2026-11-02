@@ -11,6 +11,7 @@ export const PRESET_LABELS: Readonly<Record<string, CardLocaleKey>> = {
     'read-only': 'presetReadOnly',
     'workspace-write': 'presetWorkspaceWrite',
     'danger-full-access': 'presetFullAccess',
+    'system': 'presetSystem',
 }
 
 /**

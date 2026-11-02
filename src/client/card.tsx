@@ -12,7 +12,7 @@ import type { CardFace } from './controller.ts'
 import { ensureStyles } from './styles.ts'
 import type { CardLocaleKey } from './locale.ts'
 import { presetName } from './preset-labels.ts'
-import { PRESET_OPTIONS } from '../shared/config.ts'
+import { DEFAULT_CONFIG, PRESET_OPTIONS } from '../shared/config.ts'
 
 const {
     IconChevronDownOutlineRegular, Menu, SettingsForm, SettingsSecretField, SettingsValueField, Switch,
@@ -35,12 +35,13 @@ function Row(props: { readonly children: ReactNode }): JSX.Element {
 function PresetRow(props: {
     readonly label: string
     readonly value: string
+    readonly fallback: string
     readonly disabled: boolean
     readonly onChange: (value: string) => void
     readonly t: (key: CardLocaleKey) => string
 }): JSX.Element {
     const [open, setOpen] = useState(false)
-    const labelOf = (value: string): string => presetName(value, props.t)
+    const labelOf = (value: string): string => presetName(value === '' ? props.fallback : value, props.t)
     return (
         <div className="dsh-ar-row">
             <div className="dsh-ar-rowText">
@@ -251,6 +252,7 @@ export function Card(props: CardProps) {
                                 <PresetRow
                                     label={t('onSessionReset')}
                                     value={state.onSessionReset}
+                                    fallback={DEFAULT_CONFIG.onSessionReset}
                                     disabled={disabled}
                                     onChange={value => { props.setPreset('onSessionReset', value) }}
                                     t={t}
@@ -260,6 +262,7 @@ export function Card(props: CardProps) {
                                 <PresetRow
                                     label={t('onApiUnavailable')}
                                     value={state.onApiUnavailable}
+                                    fallback={DEFAULT_CONFIG.onApiUnavailable}
                                     disabled={disabled}
                                     onChange={value => { props.setPreset('onApiUnavailable', value) }}
                                     t={t}
