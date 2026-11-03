@@ -40,7 +40,7 @@ const STYLE_TEXT = [
     // 组标题：顶部 16px 间距 + 分隔线，与其后一行再隔 16px
     '.dsh-ar-group{margin:16px 0 0;padding:16px 0 0;border-top:0.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.1));font-size:12px;font-weight:500;line-height:1.5;color:var(--dsw-alias-label-tertiary,#81858c)}',
     '.dsh-ar-group+.dsh-ar-item{margin-top:16px}',
-    '.dsh-ar-actions{display:flex;justify-content:flex-start}',
+    '.dsh-ar-actions{display:flex;justify-content:flex-start;gap:8px}',
     '.dsh-ar-test{flex:none;appearance:none;border:1px solid transparent;border-radius:var(--dsw-radius-md,12px);padding:5px 14px;background:var(--dsw-alias-label-primary,#0f1115);font:inherit;font-size:13px;line-height:1.5;color:var(--dsw-alias-bg-layer-3,#fff);cursor:pointer}',
     '.dsh-ar-test:hover:not(:disabled){opacity:.88}',
     '.dsh-ar-test:disabled{opacity:.4;cursor:default}',

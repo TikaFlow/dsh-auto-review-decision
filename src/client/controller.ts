@@ -19,6 +19,7 @@ import type { } from '@deepseek-ai/dsh-api-remotes/client'
 import {
     CONFIG_NS,
     CREDENTIAL_REF,
+    DEFAULT_CONFIG,
     MAX_CONFIDENCE_THRESHOLD,
     MIN_CONFIDENCE_THRESHOLD,
     PRESET_OPTIONS,
@@ -53,10 +54,11 @@ interface EndpointProbe {
     readonly authHeader: string
     readonly model: string
     readonly apiKey: string
+    readonly contextTokens?: number
 }
 
 /**
- * 请求宿主按草稿配置发一次最小请求。
+ * 请求宿主按草稿配置发一次测试请求；载荷带 `contextTokens` 时宿主走双发。
  * 密钥只送到宿主的测试路由，由它代发决策请求，浏览器不直连。
  * @returns 通过与否。
  */
@@ -206,7 +208,7 @@ export interface CardState extends SettingsFormShell {
     readonly apiKeyWritable: boolean
     /** 三个必填值（基址、模型、密钥）是否齐备，含草稿。 */
     readonly testable: boolean
-    /** 连通性测试的状态。 */
+    /** 连通性测试的状态；双发测试写入同一状态，结果行显示最近一次。 */
     readonly test: TestState
 }
 
@@ -222,6 +224,8 @@ export interface CardFace extends SettingsFormActions {
     readonly setNotify: (value: boolean) => void
     /** 连通性测试。 */
     readonly test: () => void
+    /** 双发测试。 */
+    readonly testDouble: () => void
     /** 作废上次结果；卡片卸载时调用。 */
     readonly resetTest: () => void
 }
@@ -336,6 +340,7 @@ export class CardController {
             setFullURL: (value) => { this.clearOutcome(); actions.edit('fullURL', String(value)) },
             setNotify: (value) => { actions.edit('notifyOnFallback', String(value)) },
             test: () => { void this.runTest() },
+            testDouble: () => { void this.runDoubleTest() },
             resetTest: () => { this.clearOutcome() },
         }
     }
@@ -359,6 +364,24 @@ export class CardController {
             authHeader: state.authHeader.text,
             model: state.model.text.trim(),
             apiKey: state.apiKey.text.trim(),
+        })
+        this.outcome = outcome
+        this.publish()
+    }
+
+    /** 双发测试：按上下文窗口填满请求发两次。 */
+    private async runDoubleTest(): Promise<void> {
+        const state = this.store.getSnapshot()
+        if (state.baseURL.text.trim() === '') return
+        this.outcome = { kind: 'running' }
+        this.publish()
+        const outcome = await probeEndpoint({
+            baseURL: state.baseURL.text.trim(),
+            fullURL: state.fullURL,
+            authHeader: state.authHeader.text,
+            model: state.model.text.trim(),
+            apiKey: state.apiKey.text.trim(),
+            contextTokens: parseContextTokens(state.contextTokens.text) ?? DEFAULT_CONFIG.contextTokens,
         })
         this.outcome = outcome
         this.publish()

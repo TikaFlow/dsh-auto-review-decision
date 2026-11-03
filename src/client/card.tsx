@@ -211,6 +211,14 @@ export function Card(props: CardProps) {
                                         >
                                             {test?.kind === 'running' ? t('testing') : t('test')}
                                         </button>
+                                        <button
+                                            type="button"
+                                            className="dsh-ar-test"
+                                            disabled={disabled || !state.testable || test?.kind === 'running'}
+                                            onClick={props.testDouble}
+                                        >
+                                            {test?.kind === 'running' ? t('testing') : t('testDouble')}
+                                        </button>
                                     </div>
                                 </Row>
                                 <Row>

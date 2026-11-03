@@ -114,3 +114,8 @@ export function budgetState(): {
         factor: ledger.factor,
     }
 }
+
+/** 把账本整体还原到快照形态。 */
+export function restoreBudget(state: ReturnType<typeof budgetState>): void {
+    ledger = state === undefined ? undefined : { ...state }
+}
