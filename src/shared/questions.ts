@@ -151,16 +151,3 @@ export const SCORE_QUESTION_SPECS: Readonly<Record<ScoreQuestionId, ScoreQuestio
         allowFactor: 0.80,
     },
 }
-
-/** 问题 id → 中文描述；为独立短语，直接拼入拒绝与询问理由。 */
-export const QUESTION_LABELS: Readonly<Record<ScoreQuestionId, string>> = {
-    malice: '存在恶意意图',
-    data_sensitivity: '泄露敏感数据',
-    safety: '操作不安全',
-    authorization: '违反规则',
-    description_match: '行为与描述不符',
-    contract: '传递参数错误',
-    scope: '超出许可范围',
-    task_fit: '操作与任务无关',
-    necessity: '该操作不必要',
-}

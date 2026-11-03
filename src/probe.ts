@@ -9,7 +9,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { baseURLProblem, CREDENTIAL_REF, REVIEW_TIMEOUT_MS, TEST_ROUTE, parseAuthHeader } from './shared/config.ts'
+import { baseURLProblem, CREDENTIAL_REF, REVIEW_TIMEOUT_MS, TEST_ROUTE, parseAuthHeader, type ProbeFailureCode } from './shared/config.ts'
 import { byteLength } from './shared/bytes.ts'
 import { isRecord } from './shared/tools.ts'
 import { budgetState, historyBytes, observe, resetBudget, restoreBudget } from './budget.ts'
@@ -25,8 +25,10 @@ export type ProbeResult = {
     readonly bodyBytes?: number
 } | {
     readonly ok: false
-    /** 面向用户的失败原因。 */
-    readonly message: string
+    /** 插件侧失败码；卡片据此取本地化文案。 */
+    readonly code?: ProbeFailureCode
+    /** 动态诊断原文。 */
+    readonly message?: string
 }
 
 /** 最小请求：余额 1152，问是否超过 1000。 */
@@ -72,11 +74,11 @@ function readPayload(payload: unknown): ProbePayload {
     }
 }
 
-/** 取失败原因：本模块的错误自带可呈现文案。 */
-function messageOf(error: unknown): string {
-    if (error instanceof SystemOneCallError) return error.message
-    if (error instanceof Error && error.message !== '') return `auto-review: ${error.message}`
-    return 'auto-review: 连通性测试失败'
+/** 取失败原因：SystemOne 错误自带诊断详情，其余按插件侧失败码归类。 */
+function messageOf(error: unknown): ProbeResult {
+    if (error instanceof SystemOneCallError) return { ok: false, message: error.message }
+    if (error instanceof Error && error.message !== '') return { ok: false, message: error.message }
+    return { ok: false, code: 'probeFailed' }
 }
 
 /** 解析凭据；未配置返回 undefined。 */
@@ -100,15 +102,15 @@ interface ProbeCall {
  */
 async function resolveCall(ctx: Context, body: ProbePayload): Promise<ProbeCall | ProbeResult> {
     if (body.baseURL === '' || baseURLProblem(body.baseURL) !== undefined) {
-        return { ok: false, message: 'auto-review: API 地址未填写或不合法；请检查「API 地址」' }
+        return { ok: false, code: 'baseURLInvalid' }
     }
     const apiKey = body.apiKey || await resolveKey(ctx)
     if (apiKey === undefined || apiKey === '') {
-        return { ok: false, message: 'auto-review: 凭据未配置；请检查「API 密钥」' }
+        return { ok: false, code: 'credentialMissing' }
     }
     const authHeader = parseAuthHeader(body.authHeader)
     if (authHeader === undefined) {
-        return { ok: false, message: 'auto-review: 认证头不合法；请检查「认证头」' }
+        return { ok: false, code: 'authHeaderInvalid' }
     }
     return { baseURL: body.baseURL, fullURL: body.fullURL, authHeader, model: body.model, apiKey }
 }
@@ -125,7 +127,7 @@ async function singleProbe(call: ProbeCall, signal: AbortSignal, body?: SystemOn
         })
         return { ok: true, inputTokens: response.usage?.input_tokens, bodyBytes: metrics.bodyBytes }
     } catch (error: unknown) {
-        return { ok: false, message: messageOf(error) }
+        return messageOf(error)
     }
 }
 
@@ -164,7 +166,7 @@ async function doubleProbe(body: ProbePayload, call: ProbeCall, signal: AbortSig
 
         observe(signature, first.bodyBytes ?? 0, inputTokens)
         const second = await singleProbe(call, signal, paddedRequest(historyBytes(signature, contextTokens, fixed)))
-        if (second.ok === false) return { ok: false, message: 'auto-review: 上下文不足' }
+        if (second.ok === false) return { ok: false, code: 'contextInsufficient' }
         return { ok: true }
     } finally {
         restoreBudget(stash)
@@ -199,7 +201,7 @@ export function installProbeRoute(ctx: Context): void {
                     try {
                         payload = await request.json()
                     } catch {
-                        return new Response('invalid json body', { status: 400 })
+                        return Response.json({ ok: false, code: 'invalidResponse' })
                     }
                     const result = await probe(ctx, payload, request.signal)
                     return Response.json(result)

@@ -224,14 +224,20 @@ configTest('全部问题通过判定线时结论为 allow', async () => {
 configTest('总判定问题低于拒绝线时直接 deny', async () => {
     const { session, exec } = makeReviewSession()
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(0.1)))
-    assert.deepEqual(verdict, { kind: 'deny', reason: '该调用未通过安全审查' })
+    assert.deepEqual(verdict, {
+        kind: 'deny',
+        reason: { en: 'This call failed the safety review', zh: '该调用未通过安全审查' },
+    })
 })
 
 configTest('总分不足且高于拒绝线时落为 ask 并携带问题标签', async () => {
     const { session, exec } = makeReviewSession()
     // noul 足够高进入补偿通道，但 malice 的安全侧全押在「不确定」档：不满足放行、高于拒绝线。
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(0.9, { id: 'malice', probabilities: { '2': 1 } })))
-    assert.deepEqual(verdict, { kind: 'ask', reason: '存在恶意意图，是否执行？' })
+    assert.deepEqual(verdict, {
+        kind: 'ask',
+        reason: { en: 'malicious intent; execute anyway?', zh: '存在恶意意图，是否执行？' },
+    })
 })
 
 configTest('参数明显违反契约时直接放行，不发出决策请求', async () => {

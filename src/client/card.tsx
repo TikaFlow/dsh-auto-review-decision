@@ -12,11 +12,21 @@ import type { CardFace } from './controller.ts'
 import { ensureStyles } from './styles.ts'
 import type { CardLocaleKey } from './locale.ts'
 import { presetName } from './preset-labels.ts'
-import { DEFAULT_CONFIG, PRESET_OPTIONS } from '../shared/config.ts'
+import { DEFAULT_CONFIG, PRESET_OPTIONS, type ProbeFailureCode } from '../shared/config.ts'
 
 const {
     IconChevronDownOutlineRegular, Menu, SettingsForm, SettingsSecretField, SettingsValueField, Switch,
 } = primitives
+
+/** 插件侧失败码 → 文案键。 */
+const PROBE_LABELS: Readonly<Record<ProbeFailureCode, CardLocaleKey>> = {
+    baseURLInvalid: 'probeBaseURLInvalid',
+    credentialMissing: 'probeCredentialMissing',
+    authHeaderInvalid: 'probeAuthHeaderInvalid',
+    contextInsufficient: 'probeContextInsufficient',
+    invalidResponse: 'probeInvalidResponse',
+    probeFailed: 'probeFailed',
+}
 
 /** 卡片完整 props：`hooks.card` 由渲染器绑定为 `useCard`。 */
 export type CardProps = Omit<CardFace, 'hooks'> & PropsHooks<CardFace['hooks']> & {
@@ -96,7 +106,12 @@ export function Card(props: CardProps) {
             ? { tone: 'note', text: t('testing') }
             : test.kind === 'passed'
                 ? { tone: 'passed', text: t('testPassed') }
-                : { tone: 'failed', text: test.message }
+                : {
+                    tone: 'failed',
+                    text: test.code !== undefined
+                        ? t(PROBE_LABELS[test.code])
+                        : (test.message ?? t('probeFailed')),
+                }
     const testNoteClass = {
         note: 'dsh-ar-testNote dsh-ar-testNote-note',
         passed: 'dsh-ar-testNote dsh-ar-testNote-passed',

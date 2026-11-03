@@ -217,7 +217,7 @@ configTest('审查落入补偿通道时向宿主产出审批询问决定', async
         const { next, calls } = makeNext({ kind: 'allow' })
         const decision = await ctx.waterfall('tools/pre-execute', makeExec(session), next)
         assert.equal(decision.kind, 'ask')
-        assert.ok(decision.kind === 'ask' && decision.reason?.includes('存在恶意意图'))
+        assert.ok(decision.kind === 'ask' && decision.reason?.includes('malicious intent'))
         assert.ok(decision.kind === 'ask' && typeof decision.displayReason?.en === 'string')
         assert.equal(calls(), 1)
     } finally {
@@ -236,7 +236,7 @@ configTest('审查原则拒绝时直接落地拒绝，不询问也不执行下�
         assert.deepEqual(decision, {
             kind: 'deny',
             reason: 'Auto review rejected tool "probe"; its body was not executed',
-            info: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: '该调用未通过安全审查' },
+            info: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: 'This call failed the safety review' },
         })
         assert.equal(calls(), 0)
     } finally {

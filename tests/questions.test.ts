@@ -67,7 +67,9 @@ test('全部通过则放行', () => {
 test('noul 低于拒绝线则直接拒绝', () => {
     const verdict = judge(response(DENY_LINE - 0.01, ALL_PASS), THRESHOLD)
     assert.equal(verdict.kind, 'deny')
-    assert.ok((verdict as { reason: string }).reason.includes('未通过安全审查'))
+    const reason = (verdict as { reason: { en: string; zh: string } }).reason
+    assert.ok(reason.zh.includes('未通过安全审查'))
+    assert.ok(reason.en.includes('failed the safety review'))
 })
 
 test('noul 落在拒绝线与放行线之间时仍检查辅助问题', () => {
@@ -80,7 +82,7 @@ test('noul 落在拒绝线与放行线之间时仍检查辅助问题', () => {
 test('noul 达到放行线也不短路辅助问题', () => {
     const verdict = judge(response(ALLOW_LINE + 0.01, { ...ALL_PASS, malice: score(0, { '0': 1 }) }), THRESHOLD)
     assert.equal(verdict.kind, 'deny')
-    assert.ok((verdict as { reason: string }).reason.includes('存在恶意意图'))
+    assert.ok((verdict as { reason: { zh: string } }).reason.zh.includes('存在恶意意图'))
 })
 
 test('放行段的辅助阈值放宽：中间段不达标而放行段达标', () => {
@@ -95,13 +97,13 @@ test('放行段的辅助阈值放宽：中间段不达标而放行段达标', ()
 test('重要问题低于拒绝线则直接拒绝', () => {
     const verdict = judge(response(0.95, { ...ALL_PASS, malice: score(0, { '0': 1 }) }), THRESHOLD)
     assert.equal(verdict.kind, 'deny')
-    assert.ok((verdict as { reason: string }).reason.includes('存在恶意意图'))
+    assert.ok((verdict as { reason: { zh: string } }).reason.zh.includes('存在恶意意图'))
 })
 
 test('普通问题未达标则询问用户', () => {
     const verdict = judge(response(0.95, { ...ALL_PASS, description_match: score(0, { '0': 1 }) }), THRESHOLD)
     assert.equal(verdict.kind, 'ask')
-    const reason = (verdict as { reason: string }).reason
+    const reason = (verdict as { reason: { zh: string } }).reason.zh
     assert.ok(reason.includes('行为与描述不符'))
     assert.ok(reason.includes('是否执行？'))
 })
@@ -109,9 +111,9 @@ test('普通问题未达标则询问用户', () => {
 test('首个未达标者决定结果，不检查后续', () => {
     // malice 与 safety 都不达标，但 malice 在前：拒绝优先
     const first = judge(response(0.95, { ...ALL_PASS, malice: score(0, { '0': 1 }), safety: score(0, { '0': 1 }) }), THRESHOLD)
-    assert.equal((first as { reason: string }).reason.includes('存在恶意意图'), true, 'malice 决定结果')
+    assert.equal((first as { reason: { zh: string } }).reason.zh.includes('存在恶意意图'), true, 'malice 决定结果')
     const second = judge(response(0.95, { ...ALL_PASS, safety: score(0, { '0': 1 }) }), THRESHOLD)
-    assert.equal((second as { reason: string }).reason.includes('操作不安全'), true)
+    assert.equal((second as { reason: { zh: string } }).reason.zh.includes('操作不安全'), true)
 })
 
 test('有效阈值按因子下调：0.80 因子的问题阈值更松', () => {
@@ -133,7 +135,7 @@ test('缺失 probabilities 时用期望档位估算，且理由可识别', () =>
 
     const verdict = judge(response(0.95, { ...ALL_PASS, description_match: score(1) }), THRESHOLD)
     assert.equal(verdict.kind, 'ask')
-    assert.ok((verdict as { reason: string }).reason.includes('（估算）'))
+    assert.ok((verdict as { reason: { zh: string } }).reason.zh.includes('（估算）'))
 })
 
 test('概率总和非空但安全档位缺失时按 0 处理', () => {
@@ -147,7 +149,7 @@ test('安全度达标但明确安全档在安全侧中的占比不足时不放�
         description_match: score(4, { '0': 0, '1': 0, '2': 0.9, '3': 0.08, '4': 0.02 }),
     }), THRESHOLD)
     assert.equal(verdict.kind, 'ask')
-    const reason = (verdict as { reason: string }).reason
+    const reason = (verdict as { reason: { zh: string } }).reason.zh
     assert.ok(reason.includes('行为与描述不符'))
 })
 
@@ -157,7 +159,7 @@ test('重要问题占比不足但未低于拒绝线时询问用户', () => {
         malice: score(4, { '2': 0.9, '3': 0.08, '4': 0.02 }),
     }), THRESHOLD)
     assert.equal(verdict.kind, 'ask')
-    const reason = (verdict as { reason: string }).reason
+    const reason = (verdict as { reason: { zh: string } }).reason.zh
     assert.ok(reason.includes('存在恶意意图'))
     assert.ok(reason.includes('是否执行？'))
 })

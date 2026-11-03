@@ -5,7 +5,7 @@
  */
 
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
-import { deniedDisplayReason } from './locales.ts'
+import { deniedDisplayReason, type LocalizedText } from './locales.ts'
 
 /** 审查者最终拒绝时持久化的结构化错误名。 */
 const AUTO_REVIEW_DENIED_ERROR_NAME = 'AutoReviewDeniedError'
@@ -17,14 +17,14 @@ const AUTO_REVIEW_FAILED_ERROR_NAME = 'AutoReviewFailedError'
 const AUTO_REVIEW_FAILED_CODE = 'AUTO_REVIEW_FAILED'
 
 /** 把一次最终拒绝物化；理由供 AI 读取后修正调用。 */
-export function denied(exec: ToolExecution, reason: string): PreToolDecision {
+export function denied(exec: ToolExecution, reason: LocalizedText): PreToolDecision {
     return {
         kind: 'deny',
         reason: `Auto review rejected tool "${exec.name}"; its body was not executed`,
         info: {
             name: AUTO_REVIEW_DENIED_ERROR_NAME,
             code: AUTO_REVIEW_DENIED_CODE,
-            reason,
+            reason: reason.en,
         },
     }
 }
@@ -33,11 +33,11 @@ export function denied(exec: ToolExecution, reason: string): PreToolDecision {
  * 请求用户裁决一次审查者已拒绝的调用。审计理由为英文，
  * 提示文案本地化，并保留审查者的原始理由。
  */
-export function askUser(exec: ToolExecution, reason?: string): PreToolDecision {
+export function askUser(exec: ToolExecution, reason?: LocalizedText): PreToolDecision {
     const denial = `Auto review denied tool "${exec.name}"`
     return {
         kind: 'ask',
-        reason: reason === undefined ? denial : `${denial}: ${reason}`,
+        reason: reason === undefined ? denial : `${denial}: ${reason.en}`,
         displayReason: deniedDisplayReason(reason),
     }
 }

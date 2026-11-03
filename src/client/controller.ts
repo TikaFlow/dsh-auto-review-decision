@@ -29,6 +29,7 @@ import {
     parseAuthHeader,
     parseContextTokens,
     parseToolWhitelist,
+    type ProbeFailureCode,
 } from '../shared/config.ts'
 import { isRecord } from '../shared/tools.ts'
 
@@ -37,8 +38,10 @@ export type TestOutcome = {
     readonly kind: 'passed'
 } | {
     readonly kind: 'failed'
-    /** 失败原因，展示在结果行。 */
-    readonly message: string
+    /** 插件侧失败码；卡片据此取本地化文案。 */
+    readonly code?: ProbeFailureCode
+    /** 动态诊断原文，卡片原样呈现。 */
+    readonly message?: string
 }
 
 /** 测试状态；null 为未测过。 */
@@ -72,19 +75,32 @@ async function probeEndpoint(probe: EndpointProbe): Promise<TestOutcome> {
         })
         if (!response.ok) {
             const reason = (await response.text().catch(() => '')).trim()
-            return { kind: 'failed', message: reason === '' ? `auto-review: HTTP ${String(response.status)}` : reason }
+            return { kind: 'failed', message: reason === '' ? `HTTP ${String(response.status)}` : reason }
         }
         const body: unknown = await response.json()
-        if (!isRecord(body)) return { kind: 'failed', message: 'auto-review: 连通性测试的响应不合法' }
+        if (!isRecord(body)) return { kind: 'failed', code: 'invalidResponse' }
         if (body.ok !== true) {
-            return { kind: 'failed', message: typeof body.message === 'string' ? body.message : 'auto-review: 连通性测试失败' }
+            const code = typeof body.code === 'string' && PROBE_CODES.has(body.code) ? body.code as ProbeFailureCode : undefined
+            return code !== undefined
+                ? { kind: 'failed', code }
+                : { kind: 'failed', message: typeof body.message === 'string' ? body.message : undefined, code: 'probeFailed' }
         }
         return { kind: 'passed' }
     } catch (error: unknown) {
-        if (error instanceof Error && error.message !== '') return { kind: 'failed', message: `auto-review: ${error.message}` }
-        return { kind: 'failed', message: 'auto-review: 连通性测试失败' }
+        if (error instanceof Error && error.message !== '') return { kind: 'failed', message: error.message }
+        return { kind: 'failed', code: 'probeFailed' }
     }
 }
+
+/** 宿主可能回传的插件侧失败码集合。 */
+const PROBE_CODES: ReadonlySet<string> = new Set<ProbeFailureCode>([
+    'baseURLInvalid',
+    'credentialMissing',
+    'authHeaderInvalid',
+    'contextInsufficient',
+    'invalidResponse',
+    'probeFailed',
+])
 
 /** 阈值字段的 spec：空串清除，越界非法。 */
 const thresholdField: SettingsFieldSpec = {

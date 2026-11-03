@@ -21,7 +21,7 @@ function asAsk(decision: PreToolDecision): Extract<PreToolDecision, { kind: 'ask
 }
 
 test('denied 物化为固定结构：deny + 固定英文模板 + 结构化 info', () => {
-    const decision = asDeny(denied(exec(), '原因'))
+    const decision = asDeny(denied(exec(), { en: 'reason-en', zh: '原因' }))
     assert.ok(decision.info !== undefined)
     assert.deepEqual(decision, {
         kind: 'deny',
@@ -29,41 +29,41 @@ test('denied 物化为固定结构：deny + 固定英文模板 + 结构化 info'
         info: {
             name: 'AutoReviewDeniedError',
             code: 'AUTO_REVIEW_DENIED',
-            reason: '原因',
+            reason: 'reason-en',
         },
     })
 })
 
 test('denied 的 info.reason 原样保留首尾空白与换行，不改写不截断', () => {
     const raw = '  首尾空白与\n换行  '
-    const withRaw = asDeny(denied(exec(), raw))
+    const withRaw = asDeny(denied(exec(), { en: raw, zh: raw }))
     assert.ok(withRaw.info !== undefined)
     assert.equal(withRaw.info.reason, raw)
     const long = '长'.repeat(500)
-    const withLong = asDeny(denied(exec(), long))
+    const withLong = asDeny(denied(exec(), { en: long, zh: long }))
     assert.ok(withLong.info !== undefined)
     assert.equal(withLong.info.reason, long)
 })
 
 test('denied 顶层 reason 是固定模板，原始理由只落在 info.reason', () => {
-    const decision = asDeny(denied(exec('runner'), '机密推理细节'))
+    const decision = asDeny(denied(exec('runner'), { en: 'secret reasoning', zh: '机密推理细节' }))
     assert.ok(decision.info !== undefined)
     assert.ok(decision.reason.includes('"runner"'))
-    assert.ok(!decision.reason.includes('机密推理细节'))
-    assert.equal(decision.info.reason, '机密推理细节')
+    assert.ok(!decision.reason.includes('secret reasoning'))
+    assert.equal(decision.info.reason, 'secret reasoning')
 })
 
-test('askUser 把 deny 落为审批询问，reason 为前缀加原始理由', () => {
-    const decision = asAsk(askUser(exec(), '原因'))
-    assert.equal(decision.reason, 'Auto review denied tool "probe": 原因')
+test('askUser 把 deny 落为审批询问，reason 为前缀加英文理由', () => {
+    const decision = asAsk(askUser(exec(), { en: 'reason-en', zh: '原因' }))
+    assert.equal(decision.reason, 'Auto review denied tool "probe": reason-en')
 })
 
-test('askUser 的 displayReason 中英文都原样携带原始理由', () => {
-    const raw = '  保留 空白 \n换行'
+test('askUser 的 displayReason 中英文各自携带对应语言的理由', () => {
+    const raw = { en: '  keep spaces \nnewlines', zh: '  保留 空白 \n换行' }
     const decision = asAsk(askUser(exec(), raw))
     assert.ok(decision.displayReason !== undefined)
-    assert.equal(decision.displayReason.en, `Auto review denied this call: ${raw}`)
-    assert.equal(decision.displayReason.zh, `Auto review 拒绝了此调用：${raw}`)
+    assert.equal(decision.displayReason.en, `Auto review denied this call: ${raw.en}`)
+    assert.equal(decision.displayReason.zh, `自动审查拒绝了此调用：${raw.zh}`)
 })
 
 test('askUser 无理由时落通用询问文案', () => {
@@ -71,7 +71,7 @@ test('askUser 无理由时落通用询问文案', () => {
     assert.equal(decision.reason, 'Auto review denied tool "probe"')
     assert.deepEqual(decision.displayReason, {
         en: 'Auto review denied this call.',
-        zh: 'Auto review 拒绝了此调用。',
+        zh: '自动审查拒绝了此调用。',
     })
 })
 

@@ -10,14 +10,14 @@ import {
     DECISION_QUESTION_SPEC,
     SCORE_QUESTION_IDS,
     SCORE_QUESTION_SPECS,
-    QUESTION_LABELS,
 } from './shared/questions.ts'
+import { blockedVerdictReason, questionVerdictReason, type LocalizedText } from './locales.ts'
 import type { SystemOneQuestions, SystemOneResponse } from './systemone.ts'
 
 export type ReviewVerdict =
     | { readonly kind: 'allow' }
-    | { readonly kind: 'deny'; readonly reason: string }
-    | { readonly kind: 'ask'; readonly reason: string }
+    | { readonly kind: 'deny'; readonly reason: LocalizedText }
+    | { readonly kind: 'ask'; readonly reason: LocalizedText }
 
 export function decisionQuestions(): SystemOneQuestions {
     return {
@@ -88,7 +88,7 @@ export function judge(response: SystemOneResponse, threshold: number): ReviewVer
     const noul = decision?.noul
     const probability = typeof noul === 'number' && Number.isFinite(noul) ? noul : 0
     if (probability < threshold * DECISION_QUESTION_SPEC.denyFactor) {
-        return { kind: 'deny', reason: '该调用未通过安全审查' }
+        return { kind: 'deny', reason: blockedVerdictReason() }
     }
     // 只有拒绝可短路。
     const compensation = probability >= threshold * DECISION_QUESTION_SPEC.allowFactor
@@ -105,12 +105,10 @@ export function judge(response: SystemOneResponse, threshold: number): ReviewVer
         const confident = highRatio > MIN_HIGH_RATIO
         if (safeEnough && confident) continue
 
-        const label = QUESTION_LABELS[id]
-        const estimate = estimated ? '（估算）' : ''
         if (spec.denyFactor && safety < threshold * spec.denyFactor * compensation) {
-            return { kind: 'deny', reason: `${label}${estimate}` }
+            return { kind: 'deny', reason: questionVerdictReason(id, estimated, false) }
         }
-        return { kind: 'ask', reason: `${label}${estimate}，是否执行？` }
+        return { kind: 'ask', reason: questionVerdictReason(id, estimated, true) }
     }
 
     return { kind: 'allow' }
