@@ -8,7 +8,7 @@ DSH 插件：以 SystemOne 决策接口审查每次工具调用，服务于仅�
 
 ## 命令
 
-- `pnpm build` — `tsc -p tsconfig.build.json && tsdown`
+- `pnpm build` — `tsc` 编译到 `lib/build`，`tsdown` 打包后删除该中间目录
 - `pnpm test` — `tsc -p tsconfig.test.build.json && node .test-dist/tests/index.test.js`；`tests/index.test.ts` 是唯一入口，新增测试文件须在该入口 import
 - `pnpm typecheck` — `tsc --noEmit`，只检查 `src`
 
