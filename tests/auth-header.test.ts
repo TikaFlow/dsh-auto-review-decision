@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_CONFIG, parseAuthHeader } from '../src/shared/config.ts'
 import { readReviewConfig } from '../src/config.ts'
-import { postDecision } from '../src/systemone-client.ts'
+import { postDecisionWithRetry } from '../src/systemone-client.ts'
 
 /** 一次调用的基础入参；authHeader 逐用例覆盖。 */
 const BASE = {
@@ -36,7 +36,7 @@ function spy(impl: () => Promise<Response>): typeof fetch {
 /** 发一次请求，返回实际发送的响应头。 */
 async function sentHeaders(authHeader: string): Promise<Headers> {
     calls.length = 0
-    await postDecision(
+    await postDecisionWithRetry(
         { state: { cwd: '/p' }, questions: { allow: { type: 'noul', instructions: '是否允许' } } },
         { ...BASE, authHeader, fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) },
     )

@@ -1,5 +1,5 @@
 /**
- * SystemOne 决策接口的 HTTP 调用：一次请求、一次响应、失败即抛。
+ * SystemOne 决策接口的：失败即抛；429 时退避重试。
  *
  * @module dsh-auto-review-decision/systemone-client
  */
@@ -193,42 +193,59 @@ async function readText(response: Response, signal: AbortSignal, timeout: AbortS
     }
 }
 
-/**
- * 发出一次决策请求并校验响应。不重试、不排队、不合并。
- * @param request - 请求体；`model` 为空时不发送该字段。
- * @param options - 端点、模型、密钥与生命周期。
- * @returns 已校验的响应体。
- * @throws {SystemOneCallError} 凭据缺失、超时、中止、网络失败、非 200、解析失败、字段缺失或取值越界。
- */
-export async function postDecision(
+
+/** 一次 HTTP 429 响应：唯一的可重试失败；重试耗尽后原样抛出，按 status 计入降级。 */
+class RateLimitedError extends SystemOneCallError {
+    constructor(detail: string) {
+        super(FAILURE.status, detail)
+        this.name = 'RateLimitedError'
+    }
+}
+
+/** 等待期间被中止的失败归类：超时信号按超时上报，其余按中止。 */
+function waitAborted(signal: AbortSignal): SystemOneCallError {
+    return signal.reason instanceof Error && signal.reason.name === TIMEOUT_ERROR
+        ? new SystemOneCallError(FAILURE.timeout, `决策请求超时（${String(REVIEW_TIMEOUT_MS / 1000)} 秒）`)
+        : new SystemOneCallError(FAILURE.aborted, '决策请求被中止')
+}
+
+/** 可被中止的退避等待；已中止则不进入等待。 */
+function backoffSleep(ms: number, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return Promise.reject(waitAborted(signal))
+    return new Promise((resolve, reject) => {
+        const onAbort = (): void => {
+            clearTimeout(timer)
+            reject(waitAborted(signal))
+        }
+        const timer = setTimeout(() => {
+            signal.removeEventListener('abort', onAbort)
+            resolve()
+        }, ms)
+        signal.addEventListener('abort', onAbort, { once: true })
+    })
+}
+
+/** 单次尝试的固定输入：序列化后的请求体、fetch 实现与请求头。 */
+interface AttemptContext {
+    readonly serialized: string
+    readonly fetchImpl: typeof fetch
+    readonly headers: Headers
+}
+
+/** 发出一次请求并校验响应；失败即抛，429 以 RateLimitedError 标记。 */
+async function attemptDecision(
     request: SystemOneRequest,
     options: DecisionCallOptions,
+    ctx: AttemptContext,
 ): Promise<SystemOneResponse> {
-    if (options.apiKey === '') {
-        throw new SystemOneCallError(FAILURE.config, '凭据未配置')
-    }
-    const body: Record<string, unknown> = { state: request.state, questions: request.questions }
-    const model = request.model || options.model
-    if (model) body.model = model
-    // 与实际发送体同源计量，避免调用方二次序列化产生偏差。
-    const serialized = JSON.stringify(body)
-    if (options.metrics !== undefined) options.metrics.bodyBytes = byteLength(serialized)
-
     const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
     const combined = AbortSignal.any([options.signal, timeout])
-    const fetchImpl = options.fetchImpl ?? fetch
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    const replace = options.authHeader.startsWith('!')
-    const name = replace ? options.authHeader.slice(1) : options.authHeader
-    if (replace) headers.delete('Authorization')
-    else headers.set('Authorization', `Bearer ${options.apiKey}`)
-    if (name !== '' && !headers.has(name)) headers.set(name, options.apiKey)
     let response: Response
     try {
-        response = await fetchImpl(decisionEndpoint(options.baseURL, options.fullURL), {
+        response = await ctx.fetchImpl(decisionEndpoint(options.baseURL, options.fullURL), {
             method: 'POST',
-            headers,
-            body: serialized,
+            headers: ctx.headers,
+            body: ctx.serialized,
             signal: combined,
         })
     } catch (error: unknown) {
@@ -238,10 +255,8 @@ export async function postDecision(
     const text = await readText(response, options.signal, timeout)
     if (!response.ok) {
         const detail = statusDetail(text)
-        throw new SystemOneCallError(
-            FAILURE.status,
-            `决策接口返回 HTTP ${String(response.status)}${detail === '' ? '' : `：${detail}`}`,
-        )
+        const message = `决策接口返回 HTTP ${String(response.status)}${detail === '' ? '' : `：${detail}`}`
+        throw response.status === 429 ? new RateLimitedError(message) : new SystemOneCallError(FAILURE.status, message)
     }
     let parsed: unknown
     try {
@@ -256,4 +271,49 @@ export async function postDecision(
     const result = payload as unknown as SystemOneResponse
     validateDecisionResponse(request.questions, result)
     return result
+}
+
+/**
+ * 发出一次决策请求并校验响应。不排队、不合并；HTTP 429 时退避重试至多 `retries` 次。
+ * 
+ * @param request - 请求体；`model` 为空时不发送该字段。
+ * @param options - 端点、模型、密钥、生命周期与注入点。
+ * @param retries - 429 的重试次数；0 表示不重试（探活路径使用）。
+ * @returns 已校验的响应体。
+ * @throws {SystemOneCallError} 凭据缺失、超时、中止、网络失败、非 200、解析失败、字段缺失或取值越界。
+ */
+export async function postDecisionWithRetry(
+    request: SystemOneRequest,
+    options: DecisionCallOptions,
+    retries: number = 5,
+): Promise<SystemOneResponse> {
+    if (options.apiKey === '') {
+        throw new SystemOneCallError(FAILURE.config, '凭据未配置')
+    }
+    const body: Record<string, unknown> = { state: request.state, questions: request.questions }
+    const model = request.model || options.model
+    if (model) body.model = model
+    // 与实际发送体同源计量，避免调用方二次序列化产生偏差。
+    const serialized = JSON.stringify(body)
+    if (options.metrics !== undefined) options.metrics.bodyBytes = byteLength(serialized)
+
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    const replace = options.authHeader.startsWith('!')
+    const name = replace ? options.authHeader.slice(1) : options.authHeader
+    if (replace) headers.delete('Authorization')
+    else headers.set('Authorization', `Bearer ${options.apiKey}`)
+    if (name !== '' && !headers.has(name)) headers.set(name, options.apiKey)
+
+    const ctx: AttemptContext = { serialized, fetchImpl: options.fetchImpl ?? fetch, headers }
+    let delay = 1000
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await attemptDecision(request, options, ctx)
+        } catch (error: unknown) {
+            // 仅 429 重试；重试中遇到任何非 429 也立即抛出。
+            if (!(error instanceof RateLimitedError) || attempt >= retries) throw error
+            await backoffSleep(delay, options.signal)
+            delay *= 2
+        }
+    }
 }

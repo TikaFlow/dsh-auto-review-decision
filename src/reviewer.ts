@@ -19,7 +19,7 @@ import { getGuard } from './fallback.ts'
 import { decisionQuestions, judge } from './questions.ts'
 import { snapshotAutoReview } from './snapshot.ts'
 import { CREDENTIAL_REF } from './shared/config.ts'
-import { postDecision, FAILURE, SystemOneCallError } from './systemone-client.ts'
+import { postDecisionWithRetry, FAILURE, SystemOneCallError } from './systemone-client.ts'
 import { whitelistVerdict } from './whitelist.ts'
 
 /**
@@ -117,7 +117,7 @@ async function review(
         questions,
     }
     const metrics = { bodyBytes: 0 }
-    const response = await postDecision(body, {
+    const response = await postDecisionWithRetry(body, {
         baseURL: config.values.baseURL,
         fullURL: config.values.fullURL,
         authHeader: config.values.authHeader,

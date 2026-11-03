@@ -13,7 +13,7 @@ import { baseURLProblem, CREDENTIAL_REF, REVIEW_TIMEOUT_MS, TEST_ROUTE, parseAut
 import { byteLength } from './shared/bytes.ts'
 import { isRecord } from './shared/tools.ts'
 import { budgetState, historyBytes, observe, resetBudget, restoreBudget } from './budget.ts'
-import { postDecision, SystemOneCallError } from './systemone-client.ts'
+import { postDecisionWithRetry, SystemOneCallError } from './systemone-client.ts'
 import type { SystemOneRequest } from './systemone.ts'
 
 /** 连通性测试的结果；成功不回细节。 */
@@ -120,11 +120,11 @@ async function singleProbe(call: ProbeCall, signal: AbortSignal, body?: SystemOn
     const metrics = { bodyBytes: 0 }
     const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
     try {
-        const response = await postDecision(body ?? PROBE_REQUEST, {
+        const response = await postDecisionWithRetry(body ?? PROBE_REQUEST, {
             ...call,
             signal: AbortSignal.any([signal, timeout]),
             metrics,
-        })
+        }, 0)
         return { ok: true, inputTokens: response.usage?.input_tokens, bodyBytes: metrics.bodyBytes }
     } catch (error: unknown) {
         return messageOf(error)

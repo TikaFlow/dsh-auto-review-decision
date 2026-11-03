@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-    postDecision,
+    postDecisionWithRetry,
     validateDecisionResponse,
     SystemOneCallError,
     FAILURE,
@@ -70,7 +70,7 @@ async function rejectsKind(
 
 test('端点、方法与请求头', async () => {
     calls.length = 0
-    const result = await postDecision(request(), { ...BASE, fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })
+    const result = await postDecisionWithRetry(request(), { ...BASE, fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })
     assert.ok(result.answers.allow?.type === 'noul')
     assert.equal(result.answers.allow.noul, 0.93)
     assert.equal(calls[0]?.url, 'https://example.com/v1/systemone')
@@ -82,12 +82,12 @@ test('端点、方法与请求头', async () => {
 
 test('基址尾部斜杠不产生重复斜杠', async () => {
     calls.length = 0
-    await postDecision(request(), { ...BASE, baseURL: 'https://example.com/v1/', fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })
+    await postDecisionWithRetry(request(), { ...BASE, baseURL: 'https://example.com/v1/', fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })
     assert.equal(calls[0]?.url, 'https://example.com/v1/systemone')
 })
 
 test('网关 result 信封解包', async () => {
-    const result = await postDecision(request(), {
+    const result = await postDecisionWithRetry(request(), {
         ...BASE,
         fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({ result: OK_BODY, success: true, errors: [], messages: [] }), { status: 200 }))),
     })
@@ -99,7 +99,7 @@ test('网关 result 信封解包', async () => {
 
 test('信封 result 非对象时按顶层体处理', async () => {
     await rejectsKind(
-        () => postDecision(request(), {
+        () => postDecisionWithRetry(request(), {
             ...BASE,
             fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({ result: null, success: false, errors: ['boom'], messages: [] }), { status: 200 }))),
         }),
@@ -110,24 +110,24 @@ test('信封 result 非对象时按顶层体处理', async () => {
 
 test('模型为空时不发送该字段', async () => {
     calls.length = 0
-    await postDecision(request(''), { ...BASE, model: '', fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })
+    await postDecisionWithRetry(request(''), { ...BASE, model: '', fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))) })
     assert.deepEqual(Object.keys(JSON.parse(String(calls[0]?.init.body))), ['state', 'questions'])
 })
 
 test('凭据缺失', async () => {
-    await rejectsKind(() => postDecision(request(), { ...BASE, apiKey: '' }), FAILURE.config)
+    await rejectsKind(() => postDecisionWithRetry(request(), { ...BASE, apiKey: '' }), FAILURE.config)
 })
 
 test('非 200 带摘要', async () => {
     await rejectsKind(
-        () => postDecision(request(), {
+        () => postDecisionWithRetry(request(), {
             ...BASE,
             fetchImpl: spy(() => Promise.resolve(new Response('{"error":{"message":"boom","type":"x"}}', { status: 500 }))),
         }),
         FAILURE.status,
         'HTTP 500',
     )
-    const error = await postDecision(request(), {
+    const error = await postDecisionWithRetry(request(), {
         ...BASE,
         fetchImpl: spy(() => Promise.resolve(new Response('{"error":{"message":"boom"}}', { status: 500 }))),
     }).catch((caught: unknown) => caught)
@@ -136,7 +136,7 @@ test('非 200 带摘要', async () => {
 })
 
 test('非 200 无 JSON 时不带响应原文', async () => {
-    const error = await postDecision(request(), {
+    const error = await postDecisionWithRetry(request(), {
         ...BASE,
         fetchImpl: spy(() => Promise.resolve(new Response('<html>gateway</html>', { status: 502 }))),
     }).catch((caught: unknown) => caught)
@@ -148,14 +148,14 @@ test('非 200 无 JSON 时不带响应原文', async () => {
 
 test('响应不是 JSON', async () => {
     await rejectsKind(
-        () => postDecision(request(), { ...BASE, fetchImpl: spy(() => Promise.resolve(new Response('not json', { status: 200 }))) }),
+        () => postDecisionWithRetry(request(), { ...BASE, fetchImpl: spy(() => Promise.resolve(new Response('not json', { status: 200 }))) }),
         FAILURE.parse,
     )
 })
 
 test('缺答案', async () => {
     await rejectsKind(
-        () => postDecision(request(), {
+        () => postDecisionWithRetry(request(), {
             ...BASE,
             fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({ answers: { allow: { type: 'noul', noul: 0.9 } } }), { status: 200 }))),
         }),
@@ -166,7 +166,7 @@ test('缺答案', async () => {
 
 test('答案类型不一致', async () => {
     await rejectsKind(
-        () => postDecision(request(), {
+        () => postDecisionWithRetry(request(), {
             ...BASE,
             fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({
                 answers: { allow: { type: 'score', score: 1 }, malice: { type: 'score', score: 1 } },
@@ -179,7 +179,7 @@ test('答案类型不一致', async () => {
 
 test('noul 越界不 clamp', async () => {
     await rejectsKind(
-        () => postDecision(request(), {
+        () => postDecisionWithRetry(request(), {
             ...BASE,
             fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({
                 answers: { allow: { type: 'noul', noul: 1.5 }, malice: { type: 'score', score: 1 } },
@@ -191,7 +191,7 @@ test('noul 越界不 clamp', async () => {
 
 test('score 越界不 clamp', async () => {
     await rejectsKind(
-        () => postDecision(request(), {
+        () => postDecisionWithRetry(request(), {
             ...BASE,
             fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({
                 answers: { allow: { type: 'noul', noul: 0.9 }, malice: { type: 'score', score: 5 } },
@@ -204,7 +204,7 @@ test('score 越界不 clamp', async () => {
 
 test('probabilities 含负数', async () => {
     await rejectsKind(
-        () => postDecision(request(), {
+        () => postDecisionWithRetry(request(), {
             ...BASE,
             fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify({
                 answers: { allow: { type: 'noul', noul: 0.9 }, malice: { type: 'score', score: 1, probabilities: { '0': -0.1 } } },
@@ -221,7 +221,7 @@ test('超时与外部中止分别归类', async () => {
         return Promise.reject(error)
     }
     await rejectsKind(
-        () => postDecision(request(), { ...BASE, signal: new AbortController().signal, fetchImpl: timeout }),
+        () => postDecisionWithRetry(request(), { ...BASE, signal: new AbortController().signal, fetchImpl: timeout }),
         FAILURE.timeout,
         '超时',
     )
@@ -229,7 +229,7 @@ test('超时与外部中止分别归类', async () => {
     const controller = new AbortController()
     setTimeout(() => { controller.abort() }, 1)
     await rejectsKind(
-        () => postDecision(request(), {
+        () => postDecisionWithRetry(request(), {
             ...BASE,
             signal: controller.signal,
             fetchImpl: () => new Promise((_resolve, reject) => {
@@ -246,13 +246,13 @@ test('超时与外部中止分别归类', async () => {
 
 test('网络失败', async () => {
     await rejectsKind(
-        () => postDecision(request(), { ...BASE, fetchImpl: () => Promise.reject(new TypeError('fetch failed')) }),
+        () => postDecisionWithRetry(request(), { ...BASE, fetchImpl: () => Promise.reject(new TypeError('fetch failed')) }),
         FAILURE.network,
     )
 })
 
 test('错误信息不含密钥', async () => {
-    const error = await postDecision(request(), {
+    const error = await postDecisionWithRetry(request(), {
         ...BASE,
         apiKey: 'sk-secret-abc',
         fetchImpl: spy(() => Promise.resolve(new Response('{"error":{"message":"boom"}}', { status: 500 }))),
