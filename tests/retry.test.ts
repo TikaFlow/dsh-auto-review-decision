@@ -1,5 +1,6 @@
 /**
- * HTTP 429 退避重试的用例：指数退避序列、耗尽失败、非 429 立即返回、重试次数参数、等待可被中止。
+ * HTTP 429 退避重试的用例：指数退避序列、耗尽失败、非 429 立即返回、重试次数参数、
+ * 重试尝试的超时窗口、等待可被中止。
  * 退避间隔由实现固定（1s 起倍增），涉及时序的用例用 node:test 的 mock 时钟推进；
  * 响应用最小桩代替真实 Response，避免 undici 内部时序受 mock 时钟影响。
  *
@@ -109,6 +110,32 @@ test('429 按指数退避（1/2/4/8/16 秒）重试共 5 次后仍 429 则失败
         assert.equal(error.kind, FAILURE.status)
         assert.ok(error.message.includes('HTTP 429'))
         assert.equal(times.length, 6)
+    } finally {
+        mock.timers.reset()
+    }
+})
+
+test('首次尝试沿用 30 秒超时，重试尝试改为 10 秒超时', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] })
+    try {
+        let calls = 0
+        const fetchImpl = ((): Promise<Response> => {
+            calls++
+            if (calls === 1) return Promise.resolve(throttled())
+            const error = new Error('The operation was aborted due to timeout')
+            error.name = 'TimeoutError'
+            return Promise.reject(error)
+        }) as typeof fetch
+        const captured = postDecisionWithRetry(request(), { ...BASE, signal: new AbortController().signal, fetchImpl })
+            .catch((error: unknown) => error)
+        await settle()
+        mock.timers.tick(1000)
+        await settle()
+        const error = await captured
+        assert.ok(error instanceof SystemOneCallError)
+        assert.equal(error.kind, FAILURE.timeout)
+        assert.ok(error.message.includes('10 秒'), `重试超时应报 10 秒，实为：${error.message}`)
+        assert.equal(calls, 2)
     } finally {
         mock.timers.reset()
     }

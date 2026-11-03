@@ -223,7 +223,7 @@ test('超时与外部中止分别归类', async () => {
     await rejectsKind(
         () => postDecisionWithRetry(request(), { ...BASE, signal: new AbortController().signal, fetchImpl: timeout }),
         FAILURE.timeout,
-        '超时',
+        '超时（30 秒）',
     )
 
     const controller = new AbortController()

@@ -70,6 +70,9 @@ export class SystemOneCallError extends Error {
 /** 错误摘要的字符上限。 */
 const MAX_DETAIL = 200
 
+/** 429 重试尝试的超时（毫秒）：端点已证明可达，按推理时长的容忍度而非网络不可达的 30 秒。 */
+const RETRY_TIMEOUT_MS = 10_000
+
 /** 调用一次决策接口所需的参数。 */
 export interface DecisionCallOptions {
     /** 已校验的端点基址。 */
@@ -170,12 +173,12 @@ const TIMEOUT_ERROR = 'TimeoutError'
 const ABORT_ERROR = 'AbortError'
 
 /** 把一次网络失败归类成超时、中止或网络错误。 */
-function networkError(error: unknown, signal: AbortSignal, timeout: AbortSignal): SystemOneCallError {
+function networkError(error: unknown, signal: AbortSignal, timeout: AbortSignal, timeoutMs: number): SystemOneCallError {
     const name = error instanceof Error ? error.name : ''
     const timedOut = timeout.aborted || name === TIMEOUT_ERROR
     const aborted = signal.aborted || name === ABORT_ERROR
     if (timedOut && !aborted) {
-        return new SystemOneCallError(FAILURE.timeout, `决策请求超时（${String(REVIEW_TIMEOUT_MS / 1000)} 秒）`)
+        return new SystemOneCallError(FAILURE.timeout, `决策请求超时（${String(timeoutMs / 1000)} 秒）`)
     }
     if (aborted) {
         return new SystemOneCallError(FAILURE.aborted, '决策请求被中止')
@@ -185,11 +188,11 @@ function networkError(error: unknown, signal: AbortSignal, timeout: AbortSignal)
 }
 
 /** 读取响应体；读取中断同样按上述规则归类。 */
-async function readText(response: Response, signal: AbortSignal, timeout: AbortSignal): Promise<string> {
+async function readText(response: Response, signal: AbortSignal, timeout: AbortSignal, timeoutMs: number): Promise<string> {
     try {
         return await response.text()
     } catch (error: unknown) {
-        throw networkError(error, signal, timeout)
+        throw networkError(error, signal, timeout, timeoutMs)
     }
 }
 
@@ -237,8 +240,9 @@ async function attemptDecision(
     request: SystemOneRequest,
     options: DecisionCallOptions,
     ctx: AttemptContext,
+    timeoutMs: number,
 ): Promise<SystemOneResponse> {
-    const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
+    const timeout = AbortSignal.timeout(timeoutMs)
     const combined = AbortSignal.any([options.signal, timeout])
     let response: Response
     try {
@@ -249,10 +253,10 @@ async function attemptDecision(
             signal: combined,
         })
     } catch (error: unknown) {
-        throw networkError(error, options.signal, timeout)
+        throw networkError(error, options.signal, timeout, timeoutMs)
     }
 
-    const text = await readText(response, options.signal, timeout)
+    const text = await readText(response, options.signal, timeout, timeoutMs)
     if (!response.ok) {
         const detail = statusDetail(text)
         const message = `决策接口返回 HTTP ${String(response.status)}${detail === '' ? '' : `：${detail}`}`
@@ -275,6 +279,7 @@ async function attemptDecision(
 
 /**
  * 发出一次决策请求并校验响应。不排队、不合并；HTTP 429 时退避重试至多 `retries` 次。
+ * 首次尝试使用 {@link REVIEW_TIMEOUT_MS}，重试尝试使用 {@link RETRY_TIMEOUT_MS}。
  * 
  * @param request - 请求体；`model` 为空时不发送该字段。
  * @param options - 端点、模型、密钥、生命周期与注入点。
@@ -308,7 +313,8 @@ export async function postDecisionWithRetry(
     let delay = 1000
     for (let attempt = 0; ; attempt++) {
         try {
-            return await attemptDecision(request, options, ctx)
+            const timeoutMs = attempt === 0 ? REVIEW_TIMEOUT_MS : RETRY_TIMEOUT_MS
+            return await attemptDecision(request, options, ctx, timeoutMs)
         } catch (error: unknown) {
             // 仅 429 重试；重试中遇到任何非 429 也立即抛出。
             if (!(error instanceof RateLimitedError) || attempt >= retries) throw error
