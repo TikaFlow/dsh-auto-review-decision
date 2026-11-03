@@ -56,14 +56,19 @@ export class SystemOneCallError extends Error {
     /** 失败归类。 */
     readonly kind: SystemOneFailureKind
 
+    /** 已收到的 HTTP 状态码；未收到响应或 200 后校验失败时为 `undefined`。 */
+    readonly status: number | undefined
+
     constructor(
         kind: SystemOneFailureKind,
         detail: string,
+        status?: number,
     ) {
         const fix = FAILURE_FIX[kind]
         super(`auto-review: ${detail}${fix === '' ? '' : `；请检查「${fix}」`}`)
         this.name = 'SystemOneCallError'
         this.kind = kind
+        this.status = status
     }
 }
 
@@ -196,11 +201,10 @@ async function readText(response: Response, signal: AbortSignal, timeout: AbortS
     }
 }
 
-
 /** 一次 HTTP 429 响应：唯一的可重试失败；重试耗尽后原样抛出，按 status 计入降级。 */
 class RateLimitedError extends SystemOneCallError {
     constructor(detail: string) {
-        super(FAILURE.status, detail)
+        super(FAILURE.status, detail, 429)
         this.name = 'RateLimitedError'
     }
 }
@@ -260,7 +264,7 @@ async function attemptDecision(
     if (!response.ok) {
         const detail = statusDetail(text)
         const message = `决策接口返回 HTTP ${String(response.status)}${detail === '' ? '' : `：${detail}`}`
-        throw response.status === 429 ? new RateLimitedError(message) : new SystemOneCallError(FAILURE.status, message)
+        throw response.status === 429 ? new RateLimitedError(message) : new SystemOneCallError(FAILURE.status, message, response.status)
     }
     let parsed: unknown
     try {

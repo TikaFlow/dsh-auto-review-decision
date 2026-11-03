@@ -133,6 +133,7 @@ test('非 200 带摘要', async () => {
     }).catch((caught: unknown) => caught)
     assert.ok(error instanceof SystemOneCallError)
     assert.ok(error.message.includes('boom'))
+    assert.equal(error.status, 500)
 })
 
 test('非 200 无 JSON 时不带响应原文', async () => {
@@ -245,10 +246,20 @@ test('超时与外部中止分别归类', async () => {
 })
 
 test('网络失败', async () => {
-    await rejectsKind(
-        () => postDecisionWithRetry(request(), { ...BASE, fetchImpl: () => Promise.reject(new TypeError('fetch failed')) }),
-        FAILURE.network,
-    )
+    const error = await postDecisionWithRetry(request(), { ...BASE, fetchImpl: () => Promise.reject(new TypeError('fetch failed')) }).catch((caught: unknown) => caught)
+    assert.ok(error instanceof SystemOneCallError)
+    assert.equal(error.kind, FAILURE.network)
+    // 未拿到 HTTP 状态响应，不标记状态码。
+    assert.equal(error.status, undefined)
+})
+
+test('429 不重试时仍携带状态码 429', async () => {
+    const error = await postDecisionWithRetry(request(), {
+        ...BASE,
+        fetchImpl: spy(() => Promise.resolve(new Response('{"error":"rate limited"}', { status: 429 }))),
+    }, 0).catch((caught: unknown) => caught)
+    assert.ok(error instanceof SystemOneCallError)
+    assert.equal(error.status, 429)
 })
 
 test('错误信息不含密钥', async () => {

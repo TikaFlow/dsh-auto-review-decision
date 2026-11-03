@@ -11,6 +11,8 @@ import type { ResolvedCredential } from '@deepseek-ai/dsh-credentials'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { FALLBACK_FAILURE_THRESHOLD } from '../src/shared/config.ts'
 import { CREDENTIAL_REF } from '../src/shared/config.ts'
+import { byteLength } from '../src/shared/bytes.ts'
+import { budgetState, maxBytes, resetBudget } from '../src/budget.ts'
 import { setConfigInput } from '../src/config.ts'
 import { decide } from '../src/reviewer.ts'
 import { FallbackGuard } from '../src/fallback.ts'
@@ -396,4 +398,61 @@ configTest('decide 成功路径不打扰未安装的守卫', async () => {
     const { session, exec } = makeReviewSession()
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
     assert.equal(verdict.kind, 'allow')
+})
+
+/** 审查预算签名：与 reviewer 内部的拼接方式一致。 */
+const BUDGET_SIGNATURE = 'http://review.test|false|review-model'
+const BUDGET_CONTEXT_TOKENS = 24 * 1024
+
+configTest('非 200/429 响应每次失败后回退因子，下一次审查预算随之收紧', async () => {
+    resetBudget()
+    const { session, exec } = makeReviewSession()
+    for (const expected of [2.25, 2]) {
+        await assert.rejects(
+            reviewOnce(session, exec, () => new Response(JSON.stringify({ error: 'context length exceeded' }), { status: 400 })),
+            (error: unknown) => {
+                assert.ok(error instanceof SystemOneCallError)
+                assert.equal(error.status, 400)
+                return true
+            },
+        )
+        assert.equal(budgetState()?.factor, expected)
+    }
+    const hardTokens = BUDGET_CONTEXT_TOKENS - Math.max(BUDGET_CONTEXT_TOKENS * 0.05, 1024)
+    assert.equal(maxBytes(BUDGET_SIGNATURE, BUDGET_CONTEXT_TOKENS), Math.floor(hardTokens * 2))
+})
+
+configTest('网络错误、超时、200 解析与字段失败都不回退因子', async () => {
+    resetBudget()
+    const { session, exec } = makeReviewSession()
+    const failures: Array<() => Response> = [
+        () => { throw new TypeError('fetch failed') },
+        () => {
+            const error = new Error('timed out')
+            error.name = 'TimeoutError'
+            throw error
+        },
+        () => new Response('<html>gateway</html>', { status: 200 }),
+        () => new Response(JSON.stringify({ result: { model: 'x' } }), { status: 200 }),
+    ]
+    for (const respond of failures) {
+        await assert.rejects(reviewOnce(session, exec, respond))
+        // 裁剪阶段会建立账本；这些与字节密度无关的失败不得改动因子与累计量。
+        assert.equal(budgetState()?.factor, 2.5, '与字节密度无关的失败不应回退因子')
+        assert.equal(budgetState()?.totalBytes, 0)
+        assert.equal(budgetState()?.totalTokens, 0)
+    }
+})
+
+configTest('成功响应仍按 usage 观测校准因子', async () => {
+    resetBudget()
+    const { session, exec } = makeReviewSession()
+    const { verdict, calls } = await reviewOnce(session, exec, () => okResponse({
+        ...answersWith(1),
+        usage: { input_tokens: 500 },
+    }))
+    assert.equal(verdict.kind, 'allow')
+    const bodyBytes = byteLength(String(calls[0]!.init.body))
+    assert.equal(budgetState()?.totalBytes, bodyBytes)
+    assert.equal(budgetState()?.factor, bodyBytes / 500)
 })

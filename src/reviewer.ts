@@ -10,8 +10,9 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { ReviewVerdict } from './questions.ts'
 import type { ShownSchemas } from './types.ts'
+import type { SystemOneResponse } from './systemone.ts'
 import { truncateHistory } from './history.ts'
-import { historyBytes, observe } from './budget.ts'
+import { fallbackFactor, historyBytes, observe } from './budget.ts'
 import { fixedStateBytes } from './fixed-overhead.ts'
 import { validateArgs } from './args-schema.ts'
 import { getReviewConfig } from './config.ts'
@@ -117,16 +118,23 @@ async function review(
         questions,
     }
     const metrics = { bodyBytes: 0 }
-    const response = await postDecisionWithRetry(body, {
-        baseURL: config.values.baseURL,
-        fullURL: config.values.fullURL,
-        authHeader: config.values.authHeader,
-        model: config.values.model,
-        apiKey: credential.value,
-        signal,
-        fetchImpl: deps?.fetchImpl,
-        metrics,
-    })
+    let response: SystemOneResponse
+    try {
+        response = await postDecisionWithRetry(body, {
+            baseURL: config.values.baseURL,
+            fullURL: config.values.fullURL,
+            authHeader: config.values.authHeader,
+            model: config.values.model,
+            apiKey: credential.value,
+            signal,
+            fetchImpl: deps?.fetchImpl,
+            metrics,
+        })
+    } catch (error: unknown) {
+        // 端点已响应且拒绝（非 200/429）：真实字节密度高于预估，收窄下一次预算后原样抛出。
+        if (error instanceof SystemOneCallError && error.status !== undefined) fallbackFactor(signature, error.status)
+        throw error
+    }
     // 只有拿到有效 token 数才观测：字节数与 token 数必须同源配对。
     const inputTokens = response.usage?.input_tokens
     if (inputTokens !== undefined && Number.isFinite(inputTokens)) observe(signature, metrics.bodyBytes, inputTokens)

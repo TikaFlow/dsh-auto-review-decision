@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { budgetState, historyBytes, maxBytes, observe, resetBudget } from '../src/budget.ts'
+import { budgetState, fallbackFactor, historyBytes, maxBytes, observe, resetBudget } from '../src/budget.ts'
 
 /** 与 budget.ts 内部常量一致的测试基准值：上下文 24K，余量取 5% 与 1K 的较大者。 */
 const CONTEXT_TOKENS = 24 * 1024
 const CONTEXT_MARGIN_TOKENS = Math.max(CONTEXT_TOKENS * 0.05, 1024)
 const HARD_STATE_TOKENS = CONTEXT_TOKENS - CONTEXT_MARGIN_TOKENS
 const INITIAL_TOKEN_FACTOR = 2.5
+const FALLBACK_STEP = 0.25
+const MIN_TOKEN_FACTOR = 1.25
 
 /** 两个不同的观测签名，模拟配置切换。 */
 const SIGNATURE = 'https://api.example/v1|false|jev-latest'
@@ -168,4 +170,43 @@ test('上限与历史额度都是整数', () => {
     assert.ok(Number.isInteger(historyBytes(SIGNATURE, CONTEXT_TOKENS, 1234)))
     // 向下取整，不会比未取整的值更大。
     assert.ok(maxBytes(SIGNATURE, CONTEXT_TOKENS) <= HARD_STATE_TOKENS * factor)
+})
+
+test('非 200/429 响应使因子按步长递减到下限并保持不变', () => {
+    resetBudget()
+    const decreasing: number[] = []
+    for (let factor = INITIAL_TOKEN_FACTOR - FALLBACK_STEP; factor >= MIN_TOKEN_FACTOR; factor -= FALLBACK_STEP) {
+        decreasing.push(factor)
+    }
+    for (const expected of decreasing) {
+        fallbackFactor(SIGNATURE, 400)
+        assert.equal(budgetState()?.factor, expected)
+    }
+    // 已到下限：继续收到非 200/429 响应，因子保持不变。
+    for (const status of [400, 500, 502, 503]) fallbackFactor(SIGNATURE, status)
+    assert.equal(budgetState()?.factor, MIN_TOKEN_FACTOR)
+    assert.equal(maxBytes(SIGNATURE, CONTEXT_TOKENS), Math.floor(HARD_STATE_TOKENS * MIN_TOKEN_FACTOR))
+})
+
+test('429 与 200 都不回退因子', () => {
+    resetBudget()
+    // 尚未建立账本时，这两类状态既不回退也不建账。
+    fallbackFactor(SIGNATURE, 429)
+    fallbackFactor(SIGNATURE, 200)
+    assert.equal(budgetState(), undefined)
+    // 已回退的因子不被它们改动。
+    fallbackFactor(SIGNATURE, 400)
+    const before = budgetState()
+    fallbackFactor(SIGNATURE, 429)
+    fallbackFactor(SIGNATURE, 200)
+    assert.deepEqual(budgetState(), before)
+    assert.equal(budgetState()?.factor, INITIAL_TOKEN_FACTOR - FALLBACK_STEP)
+})
+
+test('回退后成功观测仍按累计值校准因子', () => {
+    resetBudget()
+    fallbackFactor(SIGNATURE, 400)
+    assert.equal(budgetState()?.factor, INITIAL_TOKEN_FACTOR - FALLBACK_STEP)
+    observe(SIGNATURE, 1000, 500)
+    assert.equal(budgetState()?.factor, 2)
 })

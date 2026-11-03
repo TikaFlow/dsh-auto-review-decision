@@ -15,6 +15,12 @@ const MIN_CONTEXT_MARGIN_TOKENS = 1024
 /** token 因子的初始值：每个 token 平均对应的字节数。 */
 const INITIAL_TOKEN_FACTOR = 2.5
 
+/** 收到非 200/429 的 HTTP 响应时，因子每次回退的步长。 */
+const FALLBACK_STEP = 0.25
+
+/** 因子回退的下限。 */
+const MIN_TOKEN_FACTOR = 1.25
+
 /** 累计量：只统计「字节数与 token 数都拿到」的请求，两侧必须同源配对。 */
 interface Ledger {
     /** 观测签名；变化即重置。 */
@@ -92,6 +98,19 @@ export function observe(signature: string, bodyBytes: number, inputTokens: numbe
     current.totalBytes += bodyBytes
     current.totalTokens += inputTokens
     current.factor = current.totalBytes / current.totalTokens
+}
+
+/**
+ * 回退因子：按 {@link FALLBACK_STEP} 递减，不低于 {@link MIN_TOKEN_FACTOR}。
+ * 端点可达但拒绝了请求，常见于请求体超出上下文，429 只表示限流，同样不回退。
+*
+ * @param signature - 决策端点与模型标识的组合。
+ * @param status - 收到的 HTTP 状态码。
+ */
+export function fallbackFactor(signature: string, status: number): void {
+    if (status === 200 || status === 429) return
+    const current = ledgerFor(signature)
+    current.factor = Math.max(MIN_TOKEN_FACTOR, current.factor - FALLBACK_STEP)
 }
 
 /** 清空账本，下一次调用重新从初始因子开始。 */
