@@ -120,6 +120,7 @@ async function review(
     const response = await postDecision(body, {
         baseURL: config.values.baseURL,
         fullURL: config.values.fullURL,
+        authHeader: config.values.authHeader,
         model: config.values.model,
         apiKey: credential.value,
         signal,

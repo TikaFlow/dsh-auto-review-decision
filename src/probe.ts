@@ -9,7 +9,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { baseURLProblem, CREDENTIAL_REF, REVIEW_TIMEOUT_MS, TEST_ROUTE } from './shared/config.ts'
+import { baseURLProblem, CREDENTIAL_REF, REVIEW_TIMEOUT_MS, TEST_ROUTE, parseAuthHeader } from './shared/config.ts'
 import { isRecord } from './shared/tools.ts'
 import { postDecision, SystemOneCallError } from './systemone-client.ts'
 import type { SystemOneRequest } from './systemone.ts'
@@ -39,6 +39,8 @@ const PROBE_REQUEST: SystemOneRequest = {
 interface ProbePayload {
     readonly baseURL: string
     readonly fullURL: boolean
+    /** 卡片草稿里的认证头原文。 */
+    readonly authHeader: string
     readonly model: string
     /** 卡片草稿里的密钥；空串表示改用已保存的凭据。 */
     readonly apiKey: string
@@ -51,6 +53,7 @@ function readPayload(payload: unknown): ProbePayload {
     return {
         baseURL: text('baseURL').trim(),
         fullURL: record.fullURL === true,
+        authHeader: text('authHeader'),
         model: text('model').trim(),
         apiKey: text('apiKey'),
     }
@@ -82,11 +85,16 @@ async function probe(ctx: Context, payload: unknown, signal: AbortSignal): Promi
     if (apiKey === undefined || apiKey === '') {
         return { ok: false, message: 'auto-review: 凭据未配置；请检查「API 密钥」' }
     }
+    const authHeader = parseAuthHeader(body.authHeader)
+    if (authHeader === undefined) {
+        return { ok: false, message: 'auto-review: 认证头不合法；请检查「认证头」' }
+    }
     const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
     try {
         await postDecision(PROBE_REQUEST, {
             baseURL: body.baseURL,
             fullURL: body.fullURL,
+            authHeader,
             model: body.model,
             apiKey,
             signal: AbortSignal.any([signal, timeout]),

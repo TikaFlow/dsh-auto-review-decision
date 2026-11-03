@@ -170,7 +170,7 @@ configTest('请求体携带环境、策略原文、问题表与待审调用，�
     const { url, init } = calls[0]!
     assert.equal(url, ENDPOINT)
     assert.equal(init.method, 'POST')
-    assert.equal(init.headers && (init.headers as Record<string, string>)['Authorization'], `Bearer ${API_KEY}`)
+    assert.equal(init.headers instanceof Headers ? (init.headers as Headers).get('Authorization') : undefined, `Bearer ${API_KEY}`)
     const body = JSON.parse(String(init.body)) as {
         model?: string
         state: { environment: { cwd: string }; policy: string; history: unknown[]; pending: { name: string; arguments: unknown } }

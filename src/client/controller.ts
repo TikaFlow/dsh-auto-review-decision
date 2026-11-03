@@ -25,6 +25,7 @@ import {
     REVIEW_TIMEOUT_MS,
     TEST_URL,
     baseURLProblem,
+    parseAuthHeader,
     parseContextTokens,
     parseToolWhitelist,
 } from '../shared/config.ts'
@@ -48,6 +49,8 @@ export type TestState = {
 interface EndpointProbe {
     readonly baseURL: string
     readonly fullURL: boolean
+    /** 草稿原文；由宿主测试路由归一并校验。 */
+    readonly authHeader: string
     readonly model: string
     readonly apiKey: string
 }
@@ -102,6 +105,17 @@ const baseURLField: SettingsFieldSpec = {
         const trimmed = text.trim()
         if (trimmed === '') return { kind: 'clear' }
         return baseURLProblem(trimmed) === undefined ? { kind: 'set', value: trimmed } : undefined
+    },
+}
+
+/** 认证头字段的 spec：空串清除，归一保存（全角 `！`、`!` 前缀、空白），非法头名阻止保存。 */
+const authHeaderField: SettingsFieldSpec = {
+    ...settingsTextField('authHeader'),
+    parse: (text) => {
+        const trimmed = text.trim()
+        if (trimmed === '') return { kind: 'clear' }
+        const parsed = parseAuthHeader(trimmed)
+        return parsed === undefined ? undefined : { kind: 'set', value: parsed }
     },
 }
 
@@ -166,6 +180,8 @@ export interface CardState extends SettingsFormShell {
     readonly baseURL: SettingsFieldState
     /** 完整 URL 开关。 */
     readonly fullURL: boolean
+    /** 认证头字段。 */
+    readonly authHeader: SettingsFieldState
     /** 模型字段。 */
     readonly model: SettingsFieldState
     /** 上下文窗口字段。 */
@@ -234,6 +250,7 @@ export class CardController {
         this.form = new SettingsFormModel(scope, [
             baseURLField,
             booleanField('fullURL'),
+            authHeaderField,
             settingsTextField('model'),
             contextTokensField,
             toolWhitelistField,
@@ -260,6 +277,7 @@ export class CardController {
             ...this.form.shell(),
             baseURL,
             fullURL: draftBoolean(this.form.field('fullURL').text),
+            authHeader: this.form.field('authHeader'),
             model,
             contextTokens: this.form.field('contextTokens'),
             toolWhitelist: this.form.field('toolWhitelist'),
@@ -338,6 +356,7 @@ export class CardController {
         const outcome = await probeEndpoint({
             baseURL: state.baseURL.text.trim(),
             fullURL: state.fullURL,
+            authHeader: state.authHeader.text,
             model: state.model.text.trim(),
             apiKey: state.apiKey.text.trim(),
         })

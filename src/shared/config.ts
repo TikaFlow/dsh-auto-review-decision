@@ -75,6 +75,8 @@ export interface ReviewConfig {
     readonly baseURL: string
     /** 基址是否已含完整路径；为真时不追加 `/systemone`。 */
     readonly fullURL: boolean
+    /** 认证头：空为只发 Bearer；裸头名追加该头；`!` 前缀替换 Bearer。 */
+    readonly authHeader: string
     /** 决策模型标识。 */
     readonly model: string
     /** 决策模型上下文窗口（token）。 */
@@ -98,6 +100,7 @@ export type ConfigKey = keyof ReviewConfig
 export const DEFAULT_CONFIG: ReviewConfig = {
     baseURL: '',
     fullURL: false,
+    authHeader: '',
     model: '',
     contextTokens: 24 * 1024,
     toolWhitelist: [],
@@ -112,6 +115,7 @@ export const DEFAULT_CONFIG: ReviewConfig = {
 export const CONFIG_LABELS: Readonly<Record<ConfigKey, string>> = {
     baseURL: 'API 地址',
     fullURL: '地址为完整 URL',
+    authHeader: '认证头',
     model: '模型 ID',
     contextTokens: '上下文窗口',
     toolWhitelist: '工具白名单',
@@ -154,6 +158,25 @@ export function baseURLProblem(value: string): string | undefined {
 const TOKEN_UNIT_MULTIPLIER: Readonly<Record<string, number>> = {
     k: 1024,
     m: 1024 * 1024,
+}
+
+/** RFC 7230 的 tchar：HTTP 头名只允许这些字符。 */
+const TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u
+
+/**
+ * 归一并校验「认证头」草稿：整体 trim → 全角 `！` 视同 `!` → 剥前缀 → 再 trim。
+ * 若命中已有头，如 authorization，则发送侧静默删除。
+*
+ * @param text - 原始草稿。
+ * @returns 归一后的取值（保留 `!` 前缀）；空串表示未配置；头名非法或只填 `!` 时 undefined。
+ */
+export function parseAuthHeader(text: string): string | undefined {
+    const normalized = text.trim().replaceAll('！', '!')
+    const replace = normalized.startsWith('!')
+    const name = (replace ? normalized.slice(1) : normalized).trim()
+    if (name === '') return replace ? undefined : ''
+    if (!TOKEN_PATTERN.test(name)) return undefined
+    return replace ? `!${name}` : name
 }
 
 /**

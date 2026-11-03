@@ -12,6 +12,7 @@
  */
 
 import './args-schema.test.ts'
+import './auth-header.test.ts'
 import './budget.test.ts'
 import './context-window.test.ts'
 import './endpoint.test.ts'

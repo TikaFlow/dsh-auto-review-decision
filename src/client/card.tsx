@@ -279,6 +279,22 @@ export function Card(props: CardProps) {
                                     />
                                 </label>
                             </Row>
+                            <p className="dsh-ar-group">{t('advanced')}</p>
+                            <Row>
+                                <SettingsValueField
+                                    id="dsh-ar-auth-header"
+                                    label={t('authHeader')}
+                                    hint={t('authHeaderHint')}
+                                    overriddenLabel={t('overridden')}
+                                    resetLabel={t('reset')}
+                                    invalidLabel={t('invalidAuthHeader')}
+                                    placeholder="!x-api-key"
+                                    disabled={disabled}
+                                    {...state.authHeader}
+                                    onEdit={text => { props.edit('authHeader', text) }}
+                                    onReset={() => { props.resetField('authHeader') }}
+                                />
+                            </Row>
                         </SettingsForm>
                     </div>
                 )

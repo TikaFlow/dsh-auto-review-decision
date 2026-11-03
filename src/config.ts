@@ -13,6 +13,7 @@ import {
     MIN_CONTEXT_TOKENS,
     PRESET_OPTIONS,
     baseURLProblem,
+    parseAuthHeader,
     type ConfigKey,
     type PresetOption,
     type ReviewConfig,
@@ -22,6 +23,7 @@ import {
 export const Config = z.object({
     baseURL: z.string().default(DEFAULT_CONFIG.baseURL).description(CONFIG_LABELS.baseURL).volatile(),
     fullURL: z.boolean().default(DEFAULT_CONFIG.fullURL).description(CONFIG_LABELS.fullURL).volatile(),
+    authHeader: z.string().default(DEFAULT_CONFIG.authHeader).description(CONFIG_LABELS.authHeader).volatile(),
     model: z.string().default(DEFAULT_CONFIG.model).description(CONFIG_LABELS.model).volatile(),
     contextTokens: z.natural().min(MIN_CONTEXT_TOKENS).default(DEFAULT_CONFIG.contextTokens)
         .description(CONFIG_LABELS.contextTokens).volatile(),
@@ -68,6 +70,16 @@ function readString(input: ConfigInput, key: 'baseURL' | 'model', fallback: stri
     if (value === undefined || value === null) return fallback
     if (typeof value !== 'string') throw invalid(key, '必须是字符串')
     return value.trim()
+}
+
+/** 读认证头：缺失落默认（空），头名非法或只填 `!` 报错；存归一后的取值。 */
+function readAuthHeader(input: ConfigInput): string {
+    const value = current(input.authHeader)
+    if (value === undefined || value === null) return DEFAULT_CONFIG.authHeader
+    if (typeof value !== 'string') throw invalid('authHeader', '必须是字符串')
+    const parsed = parseAuthHeader(value)
+    if (parsed === undefined) throw invalid('authHeader', '必须是合法的 HTTP 头名，或以 ! 前缀替换 Bearer')
+    return parsed
 }
 
 /** 读阈值：缺失落默认，非有限数或越界非法（不 clamp）。 */
@@ -147,11 +159,13 @@ export function readReviewConfig(input: ConfigInput | undefined): ConfigRead {
     const raw: ConfigInput = input ?? {}
     const baseURL = readString(raw, 'baseURL', '')
     const fullURL = readBoolean(raw, 'fullURL')
+    const authHeader = readAuthHeader(raw)
     const urlProblem = baseURLProblem(baseURL)
     if (urlProblem !== undefined) throw invalid('baseURL', urlProblem)
     const values: ReviewConfig = {
         baseURL,
         fullURL,
+        authHeader,
         model: readString(raw, 'model', ''),
         contextTokens: readContextTokens(raw),
         toolWhitelist: readToolWhitelist(raw),

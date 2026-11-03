@@ -76,6 +76,8 @@ export interface DecisionCallOptions {
     readonly baseURL: string
     /** 基址是否已含完整路径；为真时不追加 `/systemone`。 */
     readonly fullURL: boolean
+    /** 已归一的认证头取值。 */
+    readonly authHeader: string
     /** 决策模型标识；留空则不发送该字段。 */
     readonly model: string
     /** 凭据解析得到的密钥。 */
@@ -215,14 +217,17 @@ export async function postDecision(
     const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
     const combined = AbortSignal.any([options.signal, timeout])
     const fetchImpl = options.fetchImpl ?? fetch
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    const replace = options.authHeader.startsWith('!')
+    const name = replace ? options.authHeader.slice(1) : options.authHeader
+    if (replace) headers.delete('Authorization')
+    else headers.set('Authorization', `Bearer ${options.apiKey}`)
+    if (name !== '' && !headers.has(name)) headers.set(name, options.apiKey)
     let response: Response
     try {
         response = await fetchImpl(decisionEndpoint(options.baseURL, options.fullURL), {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${options.apiKey}`,
-            },
+            headers,
             body: serialized,
             signal: combined,
         })

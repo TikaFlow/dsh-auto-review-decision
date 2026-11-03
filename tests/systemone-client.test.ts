@@ -18,6 +18,7 @@ const QUESTIONS = {
 const BASE = {
     baseURL: 'https://example.com/v1',
     fullURL: false,
+    authHeader: '',
     model: 'm',
     apiKey: 'sk-test',
     signal: new AbortController().signal,
@@ -74,8 +75,8 @@ test('端点、方法与请求头', async () => {
     assert.equal(result.answers.allow.noul, 0.93)
     assert.equal(calls[0]?.url, 'https://example.com/v1/systemone')
     assert.equal(calls[0]?.init.method, 'POST')
-    assert.equal((calls[0]?.init.headers as Record<string, string>)['Content-Type'], 'application/json')
-    assert.equal((calls[0]?.init.headers as Record<string, string>).Authorization, 'Bearer sk-test')
+    assert.equal((calls[0]?.init.headers as Headers).get('Content-Type'), 'application/json')
+    assert.equal((calls[0]?.init.headers as Headers).get('Authorization'), 'Bearer sk-test')
     assert.deepEqual(Object.keys(JSON.parse(String(calls[0]?.init.body))), ['state', 'questions', 'model'])
 })
 
