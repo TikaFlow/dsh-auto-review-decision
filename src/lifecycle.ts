@@ -11,7 +11,7 @@ import { RUN_CODE_NAME, type PreToolDecision } from '@deepseek-ai/dsh-tools'
 import type { ShownSchemas } from './types.ts'
 import { getReviewConfig } from './config.ts'
 import { isAborted } from './log.ts'
-import { classifyRisk } from './reviewer.ts'
+import { decide } from './reviewer.ts'
 import { exitAutoSessions } from './session-exit.ts'
 import { askUser, denied, failed } from './verdict.ts'
 
@@ -46,7 +46,7 @@ export function applyLifecycle(ctx: Context): void {
                     shown = new Map()
                     shownBySession.set(agent.session, shown)
                 }
-                const review = await classifyRisk(ctx, agent, exec, signal, shown).then(
+                const review = await decide(ctx, agent, exec, signal, shown).then(
                     verdict => ({ ok: true as const, verdict }),
                     (error: unknown) => ({ ok: false as const, error }),
                 )

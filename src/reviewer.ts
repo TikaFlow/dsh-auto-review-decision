@@ -39,7 +39,7 @@ export interface ReviewDeps {
 }
 
 /** 按固定策略向决策模型审查一个已冻结的待执行动作，并上报降级计数。 */
-export async function classifyRisk(
+export async function decide(
     ctx: Context,
     agent: Agent,
     exec: ToolExecution,

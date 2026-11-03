@@ -12,7 +12,7 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { FALLBACK_FAILURE_THRESHOLD } from '../src/shared/config.ts'
 import { CREDENTIAL_REF } from '../src/shared/config.ts'
 import { setConfigInput } from '../src/config.ts'
-import { classifyRisk } from '../src/reviewer.ts'
+import { decide } from '../src/reviewer.ts'
 import { FallbackGuard } from '../src/fallback.ts'
 import { FAILURE, SystemOneCallError } from '../src/systemone-client.ts'
 import { decisionQuestions } from '../src/questions.ts'
@@ -158,7 +158,7 @@ async function reviewOnce(
     respond: (call: CapturedCall) => Response,
 ): Promise<{ verdict: ReviewVerdict; calls: CapturedCall[] }> {
     const { calls, fetch } = capturingFetch(respond)
-    const verdict = await classifyRisk(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
+    const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
     return { verdict, calls }
 }
 
@@ -207,7 +207,7 @@ configTest('待审调用的 schema 已登记到 shown，供后续审查复用', 
     const { session, exec } = makeReviewSession()
     const shown = new Map()
     const { calls, fetch } = capturingFetch(() => okResponse(answersWith(1)))
-    await classifyRisk(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, shown, { fetchImpl: fetch })
+    await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, shown, { fetchImpl: fetch })
     assert.equal(shown.size, 1)
     const [key, schema] = [...shown.entries()][0]!
     assert.ok(key.startsWith('native\0'))
@@ -237,7 +237,7 @@ configTest('总分不足且高于拒绝线时落为 ask 并携带问题标签', 
 configTest('参数明显违反契约时直接放行，不发出决策请求', async () => {
     const { session, exec } = makeReviewSession('{"path":123}')
     const { calls, fetch } = capturingFetch(() => { throw new Error('must not be called') })
-    const verdict = await classifyRisk(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
+    const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
     assert.deepEqual(verdict, { kind: 'allow' })
     assert.equal(calls.length, 0)
 })
@@ -247,7 +247,7 @@ configTest('用户白名单命中的工具免审且不发出决策请求', async
     configValues.toolWhitelist = ['probe']
     try {
         const { calls, fetch } = capturingFetch(() => { throw new Error('must not be called') })
-        const verdict = await classifyRisk(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
+        const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
         assert.deepEqual(verdict, { kind: 'allow' })
         assert.equal(calls.length, 0)
     } finally {
@@ -298,7 +298,7 @@ configTest('网络失败归类为 network，错误信息不含密钥', async () 
     const { session, exec } = makeReviewSession()
     const { fetch } = capturingFetch(() => { throw new Error('connection refused') })
     await assert.rejects(
-        classifyRisk(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch }),
+        decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch }),
         (error: unknown) => {
             assert.ok(error instanceof SystemOneCallError)
             assert.equal(error.kind, FAILURE.network)
@@ -313,7 +313,7 @@ configTest('凭据未配置时归类为 config 失败且不发请求', async () 
     const { session, exec } = makeReviewSession()
     const { calls, fetch } = capturingFetch(() => { throw new Error('must not be called') })
     await assert.rejects(
-        classifyRisk(makeCtx(undefined), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch }),
+        decide(makeCtx(undefined), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch }),
         (error: unknown) => {
             assert.ok(error instanceof SystemOneCallError)
             assert.equal(error.kind, FAILURE.config)
@@ -386,7 +386,7 @@ configTest('降级去向为 system 时实时读取宿主默认预设', () => {
     assert.deepEqual(published, ['read-only'])
 })
 
-configTest('classifyRisk 成功路径不打扰未安装的守卫', async () => {
+configTest('decide 成功路径不打扰未安装的守卫', async () => {
     const { session, exec } = makeReviewSession()
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
     assert.equal(verdict.kind, 'allow')
