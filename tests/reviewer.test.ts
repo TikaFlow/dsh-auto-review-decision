@@ -16,8 +16,8 @@ import { byteLength } from '../src/shared/bytes.ts'
 import { budgetState, maxBytes, resetBudget } from '../src/budget.ts'
 import { setConfigInput } from '../src/config.ts'
 import { decide } from '../src/reviewer.ts'
-import { applyFallback, FallbackGuard, getGuard } from '../src/fallback.ts'
 import { FAILURE, SystemOneCallError } from '../src/systemone-client.ts'
+import { applyFallback, reviewStats, updateState } from '../src/stats.ts'
 import { decisionQuestions } from '../src/questions.ts'
 import type { ReviewVerdict } from '../src/questions.ts'
 import { SCORE_QUESTION_IDS } from '../src/shared/questions.ts'
@@ -54,6 +54,7 @@ let configValues: Record<string, unknown> = {
 const configTest = (name: string, fn: () => unknown): void => {
     test(name, async () => {
         setConfigInput(() => configValues)
+        installFallback()
         try { await fn() } finally { setConfigInput(() => undefined) }
     })
 }
@@ -170,21 +171,21 @@ async function settle(): Promise<void> {
     await new Promise((resolve) => { setImmediate(resolve) })
 }
 
-/** 安装全局降级守卫，并记录降级时的会话预设迁移。 */
-function installGuard(sessions: readonly Session[] = []): {
-    guard: FallbackGuard
-    presetCalls: Array<readonly [Session, string]>
-} {
+/** 安装降级设施，并记录降级时的会话预设迁移。 */
+function installFallback(
+    sessions: readonly Session[] = [],
+    defaultPreset = 'workspace-write',
+): { presetCalls: Array<readonly [Session, string]> } {
     const presetCalls: Array<readonly [Session, string]> = []
     const ctx = new Context()
     ctx.provide('sessions', { list: () => [...sessions] })
     ctx.provide('permissionPresets', {
         current: () => AUTO_PRESET,
         set: (session: Session, preset: string) => { presetCalls.push([session, preset]) },
-        defaultPreset: 'workspace-write',
+        defaultPreset,
     })
     applyFallback(ctx)
-    return { guard: getGuard()!, presetCalls }
+    return { presetCalls }
 }
 
 /** 在 mock 时钟下跑完一次 429 重试链（1/2/4/8/16 秒）并断言最终失败。 */
@@ -394,77 +395,69 @@ configTest('必填配置缺失时归类为 config 失败', async () => {
     }
 })
 
-configTest('计入降级的失败连续累计，达阈值降级一次且不重复发布', () => {
-    const published: string[] = []
-    const guard = new FallbackGuard({ sessions: { list: () => [] } } as unknown as Context, () => 'workspace-write', () => true, (preset) => { published.push(preset) })
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 1; index < FALLBACK_FAILURE_THRESHOLD; index++) guard.failed(counted)
-    assert.deepEqual(published, [])
-    guard.failed(counted)
-    assert.deepEqual(published, ['workspace-write'])
-    guard.failed(counted)
-    assert.deepEqual(published, ['workspace-write'])
+configTest('连续失败达阈值降级一次，之后不再重复迁移', () => {
+    const { session } = makeReviewSession()
+    const { presetCalls } = installFallback([session])
+    for (let index = 1; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('failed')
+    assert.deepEqual(presetCalls, [])
+    updateState('failed')
+    assert.deepEqual(presetCalls, [[session, 'workspace-write']])
+    updateState('failed')
+    assert.deepEqual(presetCalls, [[session, 'workspace-write']])
+    assert.equal(reviewStats().fallbacks, 1)
 })
 
-configTest('中止类失败不改变计数，反复中止不累积；非协议错误不计入', () => {
-    const published: string[] = []
-    const guard = new FallbackGuard({ sessions: { list: () => [] } } as unknown as Context, () => 'workspace-write', () => true, (preset) => { published.push(preset) })
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 0; index < 5; index++) guard.failed(counted)
-    assert.equal(guard.failureCount, 5)
-    const aborted = new SystemOneCallError(FAILURE.aborted, 'stopped')
-    for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD * 2; index++) guard.failed(aborted)
-    assert.equal(guard.failureCount, 5)
-    guard.failed(new Error('plain crash'))
-    assert.equal(guard.failureCount, 5)
-    assert.deepEqual(published, [])
+configTest('中止类失败不改变计数，反复中止不累积', () => {
+    installFallback()
+    for (let index = 0; index < 5; index++) updateState('failed')
+    assert.equal(reviewStats().consecutiveFailures, 5)
+    for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD * 2; index++) updateState('failed', { aborted: true })
+    assert.equal(reviewStats().consecutiveFailures, 5)
 })
 
 configTest('429 清零且不计失败：连续限流也不累积、不降级', () => {
-    const published: string[] = []
-    const guard = new FallbackGuard({ sessions: { list: () => [] } } as unknown as Context, () => 'workspace-write', () => true, (preset) => { published.push(preset) })
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 0; index < 5; index++) guard.failed(counted)
-    assert.equal(guard.failureCount, 5)
-    const throttled = new SystemOneCallError(FAILURE.status, 'HTTP 429', 429)
-    for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD; index++) guard.failed(throttled)
-    assert.equal(guard.failureCount, 0)
-    assert.deepEqual(published, [])
+    const { presetCalls } = installFallback()
+    for (let index = 0; index < 5; index++) updateState('failed')
+    assert.equal(reviewStats().consecutiveFailures, 5)
+    for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('rateLimited')
+    assert.equal(reviewStats().consecutiveFailures, 0)
+    assert.deepEqual(presetCalls, [])
 })
 
 configTest('成功清零计数：失败后成功再失败不累计降级', () => {
-    const published: string[] = []
-    const guard = new FallbackGuard({ sessions: { list: () => [] } } as unknown as Context, () => 'workspace-write', () => true, (preset) => { published.push(preset) })
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 1; index < FALLBACK_FAILURE_THRESHOLD; index++) guard.failed(counted)
-    guard.succeeded()
-    for (let index = 1; index < FALLBACK_FAILURE_THRESHOLD; index++) guard.failed(counted)
-    assert.deepEqual(published, [])
+    const { presetCalls } = installFallback()
+    for (let index = 1; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('failed')
+    updateState('succeeded')
+    for (let index = 1; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('failed')
+    assert.equal(reviewStats().consecutiveFailures, FALLBACK_FAILURE_THRESHOLD - 1)
+    assert.deepEqual(presetCalls, [])
 })
 
 configTest('降级去向为 system 时实时读取宿主默认预设', () => {
-    const published: string[] = []
-    const guard = new FallbackGuard({
-        sessions: { list: () => [] },
-        permissionPresets: { defaultPreset: 'read-only' },
-    } as unknown as Context, () => 'system', () => true, (preset) => { published.push(preset) })
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD; index++) guard.failed(counted)
-    assert.deepEqual(published, ['read-only'])
+    const { session } = makeReviewSession()
+    const saved = configValues.onApiUnavailable
+    configValues.onApiUnavailable = 'system'
+    try {
+        const { presetCalls } = installFallback([session], 'read-only')
+        for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('failed')
+        assert.deepEqual(presetCalls, [[session, 'read-only']])
+    } finally {
+        configValues.onApiUnavailable = saved
+    }
 })
 
-configTest('decide 成功路径不打扰未安装的守卫', async () => {
+configTest('成功审查按预期记账', async () => {
     const { session, exec } = makeReviewSession()
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
     assert.equal(verdict.kind, 'allow')
+    assert.equal(reviewStats().succeeded, 1)
 })
 
 configTest('免审放行与参数预检放行都不清零已有失败计数', async () => {
     const { session, exec } = makeReviewSession()
-    const { guard, presetCalls } = installGuard([session])
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 1; index < FALLBACK_FAILURE_THRESHOLD; index++) guard.failed(counted)
-    assert.equal(guard.failureCount, FALLBACK_FAILURE_THRESHOLD - 1)
+    const { presetCalls } = installFallback([session])
+    for (let index = 1; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('failed')
+    assert.equal(reviewStats().consecutiveFailures, FALLBACK_FAILURE_THRESHOLD - 1)
 
     configValues.toolWhitelist = ['probe']
     try {
@@ -475,49 +468,77 @@ configTest('免审放行与参数预检放行都不清零已有失败计数', as
     } finally {
         configValues.toolWhitelist = []
     }
-    assert.equal(guard.failureCount, FALLBACK_FAILURE_THRESHOLD - 1)
+    assert.equal(reviewStats().consecutiveFailures, FALLBACK_FAILURE_THRESHOLD - 1)
 
     const invalid = makeReviewSession('{"path":123}')
     const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(invalid.session), invalid.exec, invalid.exec.signal, new Map(), {
         fetchImpl: capturingFetch(() => { throw new Error('must not be called') }).fetch,
     })
     assert.deepEqual(verdict, { kind: 'allow' })
-    assert.equal(guard.failureCount, FALLBACK_FAILURE_THRESHOLD - 1)
+    assert.equal(reviewStats().consecutiveFailures, FALLBACK_FAILURE_THRESHOLD - 1)
 
     // 下一次真实失败恰达阈值，证明本地放行没有把此前的计数清零。
     await assert.rejects(reviewOnce(session, exec, () => new Response('boom', { status: 500 })))
-    assert.equal(guard.failureCount, FALLBACK_FAILURE_THRESHOLD)
+    assert.equal(reviewStats().consecutiveFailures, FALLBACK_FAILURE_THRESHOLD)
     assert.deepEqual(presetCalls, [[session, 'workspace-write']])
 })
 
 configTest('决策请求成功响应清零连续失败计数', async () => {
     const { session, exec } = makeReviewSession()
-    const { guard } = installGuard()
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 0; index < 5; index++) guard.failed(counted)
-    assert.equal(guard.failureCount, 5)
+    installFallback()
+    for (let index = 0; index < 5; index++) updateState('failed')
+    assert.equal(reviewStats().consecutiveFailures, 5)
     const { verdict } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
     assert.equal(verdict.kind, 'allow')
-    assert.equal(guard.failureCount, 0)
+    assert.equal(reviewStats().consecutiveFailures, 0)
 })
 
 configTest('最终 429 清零且不计失败，连续限流后计数仍为 0', async () => {
     const { session, exec } = makeReviewSession()
-    const { guard } = installGuard()
-    guard.failed(new SystemOneCallError(FAILURE.network, 'down'))
-    assert.equal(guard.failureCount, 1)
+    installFallback()
+    updateState('failed')
+    assert.equal(reviewStats().consecutiveFailures, 1)
     await reviewRateLimited(session, exec)
-    assert.equal(guard.failureCount, 0)
+    assert.equal(reviewStats().consecutiveFailures, 0)
     await reviewRateLimited(session, exec)
-    assert.equal(guard.failureCount, 0)
+    assert.equal(reviewStats().consecutiveFailures, 0)
+})
+
+configTest('重试 2 次的审查：模型审查 +1、请求 +3、重试 +2', async () => {
+    const { session, exec } = makeReviewSession()
+    let attempt = 0
+    mock.timers.enable({ apis: ['setTimeout'] })
+    try {
+        const pending = reviewOnce(session, exec, () => {
+            attempt++
+            return attempt <= 2 ? new Response('{}', { status: 429 }) : okResponse(answersWith(1))
+        })
+        await settle()
+        for (const delay of [1000, 2000]) {
+            mock.timers.tick(delay)
+            await settle()
+        }
+        const { verdict } = await pending
+        assert.equal(verdict.kind, 'allow')
+    } finally {
+        mock.timers.reset()
+    }
+    const stats = reviewStats()
+    assert.equal(stats.modelReviews, 1)
+    assert.equal(stats.requests, 3)
+    assert.equal(stats.retries, 2)
+    assert.equal(stats.succeeded, 1)
+    assert.equal(stats.rateLimited, 2)
+    assert.equal(stats.requests, stats.succeeded + stats.failed + stats.rateLimited)
+    assert.equal(stats.modelReviews, stats.configErrors + stats.requests - stats.retries)
 })
 
 configTest('非 429 失败逐次递增，连续达阈值触发一次降级', async () => {
     const { session, exec } = makeReviewSession()
-    const { guard, presetCalls } = installGuard([session])
+    const { presetCalls } = installFallback([session])
     for (let index = 1; index <= FALLBACK_FAILURE_THRESHOLD; index++) {
         await assert.rejects(reviewOnce(session, exec, () => new Response('boom', { status: 500 })))
-        assert.equal(guard.failureCount, index)
+        assert.equal(reviewStats().consecutiveFailures, index)
     }
     assert.deepEqual(presetCalls, [[session, 'workspace-write']])
     // 已降级后继续失败不再重复迁移。
@@ -527,26 +548,25 @@ configTest('非 429 失败逐次递增，连续达阈值触发一次降级', asy
 
 configTest('混合序列：失败×5 → 429 → 失败×5 不触发降级', async () => {
     const { session, exec } = makeReviewSession()
-    const { guard, presetCalls } = installGuard([session])
+    const { presetCalls } = installFallback([session])
     for (let index = 0; index < 5; index++) {
         await assert.rejects(reviewOnce(session, exec, () => { throw new TypeError('fetch failed') }))
     }
-    assert.equal(guard.failureCount, 5)
+    assert.equal(reviewStats().consecutiveFailures, 5)
     await reviewRateLimited(session, exec)
-    assert.equal(guard.failureCount, 0)
+    assert.equal(reviewStats().consecutiveFailures, 0)
     for (let index = 0; index < 5; index++) {
         await assert.rejects(reviewOnce(session, exec, () => new Response('boom', { status: 500 })))
     }
-    assert.equal(guard.failureCount, 5)
+    assert.equal(reviewStats().consecutiveFailures, 5)
     assert.deepEqual(presetCalls, [])
 })
 
 configTest('审查因中止失败后计数保持不变', async () => {
     const { session, exec } = makeReviewSession()
-    const { guard } = installGuard()
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 0; index < 5; index++) guard.failed(counted)
-    assert.equal(guard.failureCount, 5)
+    installFallback()
+    for (let index = 0; index < 5; index++) updateState('failed')
+    assert.equal(reviewStats().consecutiveFailures, 5)
     const controller = new AbortController()
     controller.abort()
     const abortedExec = { ...exec, signal: controller.signal } as ToolExecution
@@ -558,21 +578,23 @@ configTest('审查因中止失败后计数保持不变', async () => {
         }),
         (error: unknown) => error instanceof SystemOneCallError && error.kind === FAILURE.aborted,
     )
-    assert.equal(guard.failureCount, 5)
+    assert.equal(reviewStats().consecutiveFailures, 5)
 })
 
-configTest('再次 apply 时新建守卫，装载即把连续失败计数归零', () => {
+configTest('apply 重置统计后连续失败计数与降级标记归零', () => {
     const { session } = makeReviewSession()
-    const first = installGuard([session])
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 1; index < FALLBACK_FAILURE_THRESHOLD; index++) first.guard.failed(counted)
-    assert.equal(first.guard.failureCount, FALLBACK_FAILURE_THRESHOLD - 1)
+    const first = installFallback([session])
+    for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('failed')
+    assert.equal(reviewStats().degraded, true)
+    assert.deepEqual(first.presetCalls, [[session, 'workspace-write']])
 
-    const second = installGuard([session])
-    assert.equal(second.guard.failureCount, 0)
-    // 新守卫从零起算，旧计数不会让它一失败就降级。
-    second.guard.failed(counted)
-    assert.equal(second.guard.failureCount, 1)
+    // apply 先重置统计，再装降级设施。
+    const second = installFallback([session])
+    assert.equal(reviewStats().consecutiveFailures, 0)
+    assert.equal(reviewStats().degraded, false)
+    // 计数从零起算，首次失败不会继承旧值而直接降级。
+    updateState('failed')
+    assert.equal(reviewStats().consecutiveFailures, 1)
     assert.deepEqual(second.presetCalls, [])
 })
 

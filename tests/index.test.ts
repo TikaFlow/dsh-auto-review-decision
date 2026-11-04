@@ -11,6 +11,8 @@
  * @module tests/index
  */
 
+import { Context } from '@deepseek-ai/cordis'
+import { applyFallback } from '../src/stats.ts'
 import './args-schema.test.ts'
 import './auth-header.test.ts'
 import './budget.test.ts'
@@ -27,8 +29,12 @@ import './reviewer.test.ts'
 import './roles.test.ts'
 import './session-exit.test.ts'
 import './snapshot.test.ts'
+import './stats.test.ts'
 import './steps.test.ts'
 import './systemone-client.test.ts'
 import './tool-whitelist.test.ts'
 import './verdict.test.ts'
 import './whitelist.test.ts'
+
+// 请求链路无条件记账：进程内先初始化统计存储，避免第一条用例写入前存储尚未创建。
+applyFallback(new Context())

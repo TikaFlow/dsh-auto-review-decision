@@ -90,14 +90,16 @@ export function historyBytes(signature: string, contextTokens: number, fixedByte
  * @param signature - 决策端点与模型标识的组合。
  * @param bodyBytes - 实际发送的请求体字节数。
  * @param inputTokens - 响应回报的输入 token 数。
+ * @returns 更新后的因子；观测被丢弃或账本尚未建立时缺省。
  */
-export function observe(signature: string, bodyBytes: number, inputTokens: number): void {
-    if (!Number.isFinite(inputTokens) || inputTokens <= 0) return
-    if (!Number.isFinite(bodyBytes) || bodyBytes <= 0) return
+export function observe(signature: string, bodyBytes: number, inputTokens: number): number | undefined {
+    if (!Number.isFinite(inputTokens) || inputTokens <= 0) return budgetState()?.factor
+    if (!Number.isFinite(bodyBytes) || bodyBytes <= 0) return budgetState()?.factor
     const current = ledgerFor(signature)
     current.totalBytes += bodyBytes
     current.totalTokens += inputTokens
     current.factor = current.totalBytes / current.totalTokens
+    return current.factor
 }
 
 /**
@@ -106,11 +108,13 @@ export function observe(signature: string, bodyBytes: number, inputTokens: numbe
 *
  * @param signature - 决策端点与模型标识的组合。
  * @param status - 收到的 HTTP 状态码。
+ * @returns 回退后的因子；回调未生效时缺省。
  */
-export function fallbackFactor(signature: string, status: number): void {
-    if (status === 200 || status === 429) return
+export function fallbackFactor(signature: string, status: number): number | undefined {
+    if (status === 200 || status === 429) return budgetState()?.factor
     const current = ledgerFor(signature)
     current.factor = Math.max(MIN_TOKEN_FACTOR, current.factor - FALLBACK_STEP)
+    return current.factor
 }
 
 /** 清空账本，下一次调用重新从初始因子开始。 */

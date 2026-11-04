@@ -27,6 +27,12 @@ export const TEST_ROUTE = `/api/${CONFIG_NS}/test`
 /** 同一路由的文档相对形式，供浏览器半直接使用。 */
 export const TEST_URL = TEST_ROUTE.slice(1)
 
+/** 审查状态统计的只读路由（落在 `/api` 之下）。 */
+export const STATS_ROUTE = `/api/${CONFIG_NS}/stats`
+
+/** 同一路由的文档相对形式，供浏览器半直接使用。 */
+export const STATS_URL = STATS_ROUTE.slice(1)
+
 /** 连通性测试的插件侧失败码：卡片按码取词典文案。 */
 export type ProbeFailureCode =
     | 'baseURLInvalid'

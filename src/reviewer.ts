@@ -16,11 +16,11 @@ import { fallbackFactor, historyBytes, observe } from './budget.ts'
 import { fixedStateBytes } from './fixed-overhead.ts'
 import { validateArgs } from './args-schema.ts'
 import { getReviewConfig } from './config.ts'
-import { getGuard } from './fallback.ts'
 import { decisionQuestions, judge } from './questions.ts'
 import { snapshotAutoReview } from './snapshot.ts'
 import { CREDENTIAL_REF } from './shared/config.ts'
 import { postDecisionWithRetry, FAILURE, SystemOneCallError } from './systemone-client.ts'
+import { updateState } from './stats.ts'
 import { whitelistVerdict } from './whitelist.ts'
 
 /**
@@ -39,7 +39,7 @@ export interface ReviewDeps {
     readonly fetchImpl?: typeof fetch
 }
 
-/** 按固定策略向决策模型审查一个已冻结的待执行动作，并上报降级计数。 */
+/** 按固定策略向决策模型审查一个已冻结的待执行动作，并记账。 */
 export async function decide(
     ctx: Context,
     agent: Agent,
@@ -48,16 +48,13 @@ export async function decide(
     shown: ShownSchemas,
     deps?: ReviewDeps,
 ): Promise<ReviewVerdict> {
-    try {
-        return await review(ctx, agent, exec, signal, shown, deps)
-    } catch (error: unknown) {
-        // 失败先计数降级，再把错误原样抛给调用方；本次审批结果不被吞。
-        getGuard()?.failed(error)
-        throw error
-    }
+    updateState('review')
+    const verdict = await review(ctx, agent, exec, signal, shown, deps)
+    updateState('verdict', { verdict: verdict.kind })
+    return verdict
 }
 
-/** 审查主体：本地放行不触及降级计数，仅在决策请求返回后清零。 */
+/** 审查主体：本地放行不触及连续失败计数；决策请求的最终结果才更新计数。 */
 async function review(
     ctx: Context,
     agent: Agent,
@@ -67,22 +64,31 @@ async function review(
     deps?: ReviewDeps,
 ): Promise<ReviewVerdict> {
     const config = getReviewConfig()
-    if (config.missing.length > 0) {
-        throw new SystemOneCallError(FAILURE.config, `配置未完成（${config.missing.join('、')}）`)
-    }
-    const credential = await ctx.credentials.resolve(credentialRef(CREDENTIAL_REF))
-    if (credential === undefined) {
-        throw new SystemOneCallError(FAILURE.config, '凭据未配置')
-    }
     const cwd = await ctx.workingDirectory.ensure(agent, signal)
     const snapshot = snapshotAutoReview(agent, exec, cwd, shown)
     shown.set(snapshot.pending.key, snapshot.pending.schema)
     // 本地预检：参数明显不符合契约时直接放行，让工具自身报错。
     const issues = validateArgs(exec.arguments, snapshot.pending.schema.parameters)
-    if (issues.length > 0) return { kind: 'allow' }
+    if (issues.length > 0) {
+        updateState('localReview')
+        return { kind: 'allow' }
+    }
     // 白名单在本地预检之后生效：免审调用仍须通过参数校验。
     const exempt = await whitelistVerdict(ctx, exec, cwd, signal, new Set(config.values.toolWhitelist))
-    if (exempt !== undefined) return exempt
+    if (exempt !== undefined) {
+        updateState('localReview')
+        return exempt
+    }
+    updateState('modelReview')
+    if (config.missing.length > 0) {
+        updateState('configError')
+        throw new SystemOneCallError(FAILURE.config, `配置未完成（${config.missing.join('、')}）`)
+    }
+    const credential = await ctx.credentials.resolve(credentialRef(CREDENTIAL_REF))
+    if (credential === undefined || credential.value === '') {
+        updateState('configError')
+        throw new SystemOneCallError(FAILURE.config, '凭据未配置')
+    }
     // 此审查请求只发往决策端点，永不进入会话日志。
     // history 只承载文本事实：非文本块（图片、附件等）降为占位说明。
     const projected = snapshot.history.map(entry => {
@@ -130,14 +136,22 @@ async function review(
         })
     } catch (error: unknown) {
         // 端点已响应且拒绝（非 200/429）：真实字节密度高于预估，收窄下一次预算后原样抛出。
-        if (error instanceof SystemOneCallError && error.status !== undefined) fallbackFactor(signature, error.status)
+        if (error instanceof SystemOneCallError && error.status !== undefined) {
+            const factor = fallbackFactor(signature, error.status)
+            if (factor !== undefined) updateState('factorChange', { factor })
+        }
         throw error
     }
-    
-    // 端点成功则清零连续失败计数。
-    getGuard()?.succeeded()
+
     // 只有拿到有效 token 数才观测：字节数与 token 数必须同源配对。
     const inputTokens = response.usage?.input_tokens
-    if (inputTokens !== undefined && Number.isFinite(inputTokens)) observe(signature, metrics.bodyBytes, inputTokens)
+    const validTokens = inputTokens !== undefined && Number.isFinite(inputTokens) && inputTokens > 0
+        ? inputTokens
+        : undefined
+    if (validTokens !== undefined) {
+        const factor = observe(signature, metrics.bodyBytes, validTokens)
+        if (factor !== undefined) updateState('factorChange', { factor })
+        updateState('calibration')
+    }
     return judge(response, config.values.confidenceThreshold)
 }

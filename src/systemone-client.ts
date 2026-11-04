@@ -7,6 +7,7 @@
 import { REVIEW_TIMEOUT_MS, SCORE_LEVELS, decisionEndpoint } from './shared/config.ts'
 import { byteLength } from './shared/bytes.ts'
 import { isRecord } from './shared/tools.ts'
+import { updateState } from './stats.ts'
 import type {
     SystemOneAnswer,
     SystemOneQuestion,
@@ -94,7 +95,7 @@ export interface DecisionCallOptions {
     readonly signal: AbortSignal
     /** 注入的 fetch，默认取全局实现。 */
     readonly fetchImpl?: typeof fetch
-    /** 观测出口：实际发送的请求体字节数在序列化后回填。 */
+    /** 观测出口：实际发送的请求体字节数在调用中回填。 */
     readonly metrics?: { bodyBytes: number }
 }
 
@@ -297,6 +298,7 @@ export async function postDecisionWithRetry(
     retries: number = 5,
 ): Promise<SystemOneResponse> {
     if (options.apiKey === '') {
+        updateState('configError')
         throw new SystemOneCallError(FAILURE.config, '凭据未配置')
     }
     const body: Record<string, unknown> = { state: request.state, questions: request.questions }
@@ -304,7 +306,8 @@ export async function postDecisionWithRetry(
     if (model) body.model = model
     // 与实际发送体同源计量，避免调用方二次序列化产生偏差。
     const serialized = JSON.stringify(body)
-    if (options.metrics !== undefined) options.metrics.bodyBytes = byteLength(serialized)
+    const bodyBytes = byteLength(serialized)
+    if (options.metrics !== undefined) options.metrics.bodyBytes = bodyBytes
 
     const headers = new Headers({ 'Content-Type': 'application/json' })
     const replace = options.authHeader.startsWith('!')
@@ -316,14 +319,34 @@ export async function postDecisionWithRetry(
     const ctx: AttemptContext = { serialized, fetchImpl: options.fetchImpl ?? fetch, headers }
     let delay = 1000
     for (let attempt = 0; ; attempt++) {
+        updateState('attempt', { bodyBytes, retry: attempt > 0 })
+        const startedAt = performance.now()
         try {
             const timeoutMs = attempt === 0 ? REVIEW_TIMEOUT_MS : RETRY_TIMEOUT_MS
-            return await attemptDecision(request, options, ctx, timeoutMs)
+            const response = await attemptDecision(request, options, ctx, timeoutMs)
+            const inputTokens = response.usage?.input_tokens
+            updateState('succeeded', {
+                bodyBytes,
+                durationMs: performance.now() - startedAt,
+                ...(inputTokens === undefined ? {} : { inputTokens }),
+            })
+            return response
         } catch (error: unknown) {
+            if (attempt >= retries) throw error
+            const durationMs = performance.now() - startedAt
             // 仅 429 重试；重试中遇到任何非 429 也立即抛出。
-            if (!(error instanceof RateLimitedError) || attempt >= retries) throw error
-            await backoffSleep(delay, options.signal)
-            delay *= 2
+            if (error instanceof RateLimitedError) {
+                updateState('rateLimited', { bodyBytes, durationMs })
+                await backoffSleep(delay, options.signal)
+                delay *= 2
+            } else {
+                updateState('failed', {
+                    bodyBytes,
+                    durationMs,
+                    aborted: error instanceof SystemOneCallError && error.kind === FAILURE.aborted,
+                })
+                throw error
+            }
         }
     }
 }

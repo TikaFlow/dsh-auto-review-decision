@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import { DEFAULT_CONFIG, FALLBACK_FAILURE_THRESHOLD, SYSTEM_TARGET } from '../src/shared/config.ts'
-import { readReviewConfig } from '../src/config.ts'
-import { FallbackGuard } from '../src/fallback.ts'
-import { SystemOneCallError } from '../src/systemone-client.ts'
+import { readReviewConfig, setConfigInput } from '../src/config.ts'
+import { applyFallback, updateState } from '../src/stats.ts'
 import { exitAutoSessions, resolveExitTarget } from '../src/session-exit.ts'
 
 /** 可变的宿主默认预设引用，供断言实时读取语义。 */
@@ -83,25 +82,31 @@ test('exitAutoSessions 只切走 Auto 会话，system 解析为当时默认预�
     assert.equal(switched[0].preset, 'workspace-write')
 })
 
-test('FallbackGuard 降级时实时读取 system 指向的默认预设', () => {
-    const defaults = mutableDefault('workspace-write')
-    const { ctx } = stubCtx(defaults)
-    const seen: string[] = []
-    const guard = new FallbackGuard(
-        ctx,
-        () => 'system',
-        () => true,
-        (preset) => { seen.push(preset) },
-    )
-    for (let i = 0; i < FALLBACK_FAILURE_THRESHOLD; i++) {
-        guard.failed(new SystemOneCallError('network', '连接失败'))
+test('降级动作每次实时读取 system 指向的默认预设', () => {
+    setConfigInput(() => ({ onApiUnavailable: 'system', notifyOnFallback: true }))
+    try {
+        const defaults = mutableDefault('workspace-write')
+        const autoSession = { id: 'auto' }
+        const otherSession = { id: 'other' }
+        const switched: { readonly session: unknown; readonly preset: string }[] = []
+        const ctx = new Context()
+        ctx.provide('sessions', { list: () => [autoSession, otherSession] })
+        ctx.provide('permissionPresets', {
+            get defaultPreset(): string { return defaults.current },
+            current: (session: unknown): string => (session === autoSession ? 'auto' : 'read-only'),
+            set: (session: unknown, preset: string): void => { switched.push({ session, preset }) },
+        })
+        applyFallback(ctx)
+
+        for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('failed')
+        assert.deepEqual(switched, [{ session: autoSession, preset: 'workspace-write' }])
+
+        // 重置统计模拟热重载；宿主默认已改，再次降级用新值。
+        applyFallback(ctx)
+        defaults.current = 'danger-full-access'
+        for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('failed')
+        assert.deepEqual(switched.at(-1), { session: autoSession, preset: 'danger-full-access' })
+    } finally {
+        setConfigInput(() => undefined)
     }
-    assert.deepEqual(seen, ['workspace-write'])
-    // 重新选择 Auto 清零后，宿主默认已改：再次降级用新值。
-    guard.reset()
-    defaults.current = 'danger-full-access'
-    for (let i = 0; i < FALLBACK_FAILURE_THRESHOLD; i++) {
-        guard.failed(new SystemOneCallError('network', '连接失败'))
-    }
-    assert.deepEqual(seen, ['workspace-write', 'danger-full-access'])
 })

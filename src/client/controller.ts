@@ -24,6 +24,7 @@ import {
     MIN_CONFIDENCE_THRESHOLD,
     PRESET_OPTIONS,
     REVIEW_TIMEOUT_MS,
+    STATS_URL,
     TEST_URL,
     baseURLProblem,
     parseAuthHeader,
@@ -31,6 +32,7 @@ import {
     parseToolWhitelist,
     type ProbeFailureCode,
 } from '../shared/config.ts'
+import { parseStats, type ReviewStats } from '../shared/stats.ts'
 import { isRecord } from '../shared/tools.ts'
 
 /** 一次连通性测试的结果；成功不带细节。 */
@@ -226,6 +228,8 @@ export interface CardState extends SettingsFormShell {
     readonly testable: boolean
     /** 连通性测试的状态；双发测试写入同一状态，结果行显示最近一次。 */
     readonly test: TestState
+    /** 审查状态统计；尚未读到或路由不可用时为 null。 */
+    readonly stats: ReviewStats | null
 }
 
 /** 卡片从注册侧注入的面。 */
@@ -242,6 +246,8 @@ export interface CardFace extends SettingsFormActions {
     readonly test: () => void
     /** 双发测试。 */
     readonly testDouble: () => void
+    /** 读取审查状态统计。 */
+    readonly refreshStats: () => void
     /** 作废上次结果；卡片卸载时调用。 */
     readonly resetTest: () => void
 }
@@ -261,6 +267,7 @@ export class CardController {
     private readonly disposers: (() => void)[] = []
     private credential: CredentialState = { configured: false, writable: true }
     private outcome: TestState = null
+    private stats: ReviewStats | null = null
 
     /**
      * @param ctx - 浏览器插件上下文，其 `remote.credentials` 命名空间应答凭据读写。
@@ -312,6 +319,7 @@ export class CardController {
             testable: baseURL.text.trim() !== ''
                 && (apiKey.text.trim() !== '' || this.credential.configured),
             test: this.outcome,
+            stats: this.stats,
         }
     }
 
@@ -357,6 +365,7 @@ export class CardController {
             setNotify: (value) => { actions.edit('notifyOnFallback', String(value)) },
             test: () => { void this.runTest() },
             testDouble: () => { void this.runDoubleTest() },
+            refreshStats: () => { void this.readStats() },
             resetTest: () => { this.clearOutcome() },
         }
     }
@@ -366,6 +375,19 @@ export class CardController {
         if (this.outcome === null) return
         this.outcome = null
         this.publish()
+    }
+
+    /** 读取审查状态统计；路由不可用或载荷不合法时保留上一次结果。 */
+    private async readStats(): Promise<void> {
+        try {
+            const response = await fetch(STATS_URL, { signal: AbortSignal.timeout(REVIEW_TIMEOUT_MS) })
+            if (!response.ok) return
+            const stats = parseStats(await response.json())
+            if (stats === undefined) return
+            this.stats = stats
+            this.publish()
+        } catch {
+        }
     }
 
     /** 连通性测试：把当前草稿配置交给宿主发一次最小请求。 */
@@ -383,6 +405,7 @@ export class CardController {
         })
         this.outcome = outcome
         this.publish()
+        void this.readStats()
     }
 
     /** 双发测试：按上下文窗口填满请求发两次。 */
@@ -401,6 +424,7 @@ export class CardController {
         })
         this.outcome = outcome
         this.publish()
+        void this.readStats()
     }
 
     /** 释放订阅。 */

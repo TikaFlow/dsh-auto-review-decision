@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'
-import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
-import { applyFallback, getGuard } from '../src/fallback.ts'
-import { FAILURE, SystemOneCallError } from '../src/systemone-client.ts'
+import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings/types'
 import { setConfigInput } from '../src/config.ts'
-import { FALLBACK_FAILURE_THRESHOLD, NOTICE_ROUTE } from '../src/shared/config.ts'
+import { applyFallback, reviewStats, updateState } from '../src/stats.ts'
+import { CONFIG_NS, FALLBACK_FAILURE_THRESHOLD, NOTICE_ROUTE } from '../src/shared/config.ts'
 
 /** 审查配置段；测试可就地改写后复原。 */
 let configValues: Record<string, unknown> = {
@@ -52,7 +52,7 @@ async function flush(): Promise<void> {
     for (let round = 0; round < 3; round++) await new Promise(resolve => setImmediate(resolve))
 }
 
-/** 带连接与会话服务的最小宿主上下文；guard 降级只需空会话列表。 */
+/** 带连接与会话服务的最小宿主上下文；降级只需空会话列表。 */
 function makeCtx(): { ctx: Context; routes: Map<string, RegisteredRoute>; unregisterConnection: () => void } {
     const ctx = new Context()
     const { routes, connection } = makeConnectionStub()
@@ -61,10 +61,25 @@ function makeCtx(): { ctx: Context; routes: Map<string, RegisteredRoute>; unregi
     return { ctx, routes, unregisterConnection: () => { unregisterConnection() } }
 }
 
-/** 把守卫推到阈值触发一次降级。 */
+/** 把连续失败推到阈值触发一次降级。 */
 function degrade(): void {
-    const counted = new SystemOneCallError(FAILURE.network, 'down')
-    for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD; index++) getGuard()!.failed(counted)
+    for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD; index++) updateState('failed')
+}
+
+/** 模拟会话中重新选择权限预设。 */
+function emitPreset(ctx: Context, preset: string): void {
+    ctx.emit('session/event', {} as Session, {
+        type: 'permission/preset',
+        seq: 0 as SessionSeq,
+        time: 0,
+        data: { preset },
+    })
+}
+
+/** 面板累计值快照；不含 fallback 状态。 */
+function panelOf(): Omit<ReturnType<typeof reviewStats>, 'consecutiveFailures' | 'degraded'> {
+    const { consecutiveFailures: _failures, degraded: _degraded, ...panel } = reviewStats()
+    return panel
 }
 
 async function openStream(route: RegisteredRoute, signal?: AbortSignal): Promise<{ response: Response; reader: ReadableStreamDefaultReader<Uint8Array> }> {
@@ -79,19 +94,12 @@ async function readFrame(reader: ReadableStreamDefaultReader<Uint8Array>): Promi
     return new TextDecoder().decode(value)
 }
 
-/** 模拟重新选择 Auto 的会话事件，用于清零降级标记。 */
-function reselectAuto(ctx: Context): void {
-    ctx.emit('session/event', {} as Session, {
-        type: 'permission/preset',
-        data: { preset: AUTO_PRESET },
-    } as unknown as SessionEvent)
-}
-
-configTest('没有连接服务的 profile 不注册路由但守卫仍然可用', async () => {
+configTest('没有连接服务的 profile 不注册路由但降级仍然生效', async () => {
     const ctx = new Context()
+    ctx.provide('sessions', { list: () => [] as unknown[] })
     applyFallback(ctx)
     await flush()
-    assert.ok(getGuard() !== undefined)
+    degrade()
 })
 
 configTest('路由随连接注册为 GET，连接注销后路由解除', async () => {
@@ -112,7 +120,7 @@ configTest('降级触发时向订阅流推送预设名事件', async () => {
     await flush()
     const { reader } = await openStream(routes.get(NOTICE_ROUTE)!)
     degrade()
-    assert.equal(await readFrame(reader), 'data: {"preset":"workspace-write"}\n\n')
+    assert.equal(await readFrame(reader), 'data: "workspace-write"\n\n')
 })
 
 configTest('notifyOnFallback 为假时降级不推送', async () => {
@@ -141,7 +149,7 @@ configTest('多个订阅者各自收到同一事件且互不影响', async () =>
     const first = await openStream(route)
     const second = await openStream(route)
     degrade()
-    const frame = 'data: {"preset":"workspace-write"}\n\n'
+    const frame = 'data: "workspace-write"\n\n'
     assert.equal(await readFrame(first.reader), frame)
     assert.equal(await readFrame(second.reader), frame)
 })
@@ -154,13 +162,71 @@ configTest('订阅中止后流关闭，后续通知不再投递且不残留监�
     const controller = new AbortController()
     const aborted = await openStream(route, controller.signal)
     degrade()
-    assert.equal(await readFrame(aborted.reader), 'data: {"preset":"workspace-write"}\n\n')
+    assert.equal(await readFrame(aborted.reader), 'data: "workspace-write"\n\n')
     controller.abort()
     const tail = await aborted.reader.read()
     assert.ok(tail.done, '中止后流未关闭')
-    // 清零降级标记后再次降级：老订阅者已注销，新订阅者照常收到。
-    reselectAuto(ctx)
-    const fresh = await openStream(route)
+    // 模拟热重载归零后再次降级：老订阅者已注销，新订阅者照常收到。
+    applyFallback(ctx)
+    await flush()
+    const fresh = await openStream(routes.get(NOTICE_ROUTE)!)
     degrade()
-    assert.equal(await readFrame(fresh.reader), 'data: {"preset":"workspace-write"}\n\n')
+    assert.equal(await readFrame(fresh.reader), 'data: "workspace-write"\n\n')
+})
+
+configTest('连续失败到 9 后重选 Auto：计数与降级标记归零，面板累计不变', async () => {
+    const { ctx } = makeCtx()
+    applyFallback(ctx)
+    await flush()
+    updateState('localReview')
+    updateState('succeeded', { durationMs: 10, bodyBytes: 100, inputTokens: 50 })
+    for (let index = 0; index < FALLBACK_FAILURE_THRESHOLD - 1; index++) {
+        updateState('failed', { bodyBytes: 10 })
+    }
+    assert.equal(reviewStats().consecutiveFailures, FALLBACK_FAILURE_THRESHOLD - 1)
+    assert.equal(reviewStats().degraded, false)
+    const before = panelOf()
+
+    emitPreset(ctx, AUTO_PRESET)
+    const stats = reviewStats()
+    assert.equal(stats.consecutiveFailures, 0)
+    assert.equal(stats.degraded, false)
+    assert.deepEqual(panelOf(), before)
+})
+
+configTest('已降级后重选 Auto：回到未降级，连续失败可再次触发一次降级', async () => {
+    const { ctx } = makeCtx()
+    applyFallback(ctx)
+    await flush()
+    degrade()
+    assert.equal(reviewStats().degraded, true)
+    assert.equal(reviewStats().fallbacks, 1)
+
+    emitPreset(ctx, AUTO_PRESET)
+    assert.equal(reviewStats().degraded, false)
+    assert.equal(reviewStats().consecutiveFailures, 0)
+
+    degrade()
+    assert.equal(reviewStats().degraded, true)
+    assert.equal(reviewStats().fallbacks, 2)
+})
+
+configTest('配置文档更新只清连续失败，面板累计与降级标记不变', async () => {
+    const { ctx } = makeCtx()
+    applyFallback(ctx)
+    await flush()
+    updateState('succeeded', { durationMs: 10, bodyBytes: 100, inputTokens: 50 })
+    for (let index = 0; index < 5; index++) updateState('failed', { bodyBytes: 10 })
+    const before = panelOf()
+
+    ctx.emit('settings/document-updated', CONFIG_NS as SettingsNamespace, 1)
+    assert.equal(reviewStats().consecutiveFailures, 0)
+    assert.deepEqual(panelOf(), before)
+
+    // 旧行为：配置更新只清连续失败，同一装载内已置位的降级标记保留。
+    degrade()
+    assert.equal(reviewStats().degraded, true)
+    ctx.emit('settings/document-updated', CONFIG_NS as SettingsNamespace, 1)
+    assert.equal(reviewStats().consecutiveFailures, 0)
+    assert.equal(reviewStats().degraded, true)
 })

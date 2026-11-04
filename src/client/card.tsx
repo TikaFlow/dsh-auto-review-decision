@@ -13,9 +13,10 @@ import { ensureStyles } from './styles.ts'
 import type { CardLocaleKey } from './locale.ts'
 import { presetName } from './preset-labels.ts'
 import { DEFAULT_CONFIG, PRESET_OPTIONS, type ProbeFailureCode } from '../shared/config.ts'
+import { formatStatValue, type ReviewStats } from '../shared/stats.ts'
 
 const {
-    IconChevronDownOutlineRegular, Menu, SettingsForm, SettingsSecretField, SettingsValueField, Switch,
+    IconChevronDownOutlineRegular, Menu, Pill, SettingsForm, SettingsSecretField, SettingsValueField, Switch,
 } = primitives
 
 /** 插件侧失败码 → 文案键。 */
@@ -87,6 +88,56 @@ function PresetRow(props: {
     )
 }
 
+function Stat(props: { readonly label: string; readonly value: string }): JSX.Element {
+    return <Pill active>{`${props.label}: ${props.value}`}</Pill>
+}
+
+/** 统计缺值的占位符。 */
+const STAT_PLACEHOLDER = '--'
+
+/** 因子与耗时保留的小数位。 */
+const STAT_DECIMALS = 2
+
+/** 只读的审查状态统计面板。 */
+function StatsPanel(props: {
+    readonly stats: ReviewStats | null
+    readonly t: (key: CardLocaleKey) => string
+}): JSX.Element {
+    const stats = props.stats
+    const now = Date.now()
+    const unit = props.t('statsBytesUnit')
+    return (
+        <div className="dsh-ar-pills">
+            <Stat label={props.t('statsReviewCount')} value={formatStatValue(stats?.reviewCount)} />
+            <Stat label={props.t('statsLocalReviews')} value={formatStatValue(stats?.localReviews)} />
+            <Stat label={props.t('statsModelReviews')} value={formatStatValue(stats?.modelReviews)} />
+            <Stat label={props.t('statsConfigErrors')} value={formatStatValue(stats?.configErrors)} />
+            <Stat label={props.t('statsRequests')} value={formatStatValue(stats?.requests)} />
+            <Stat label={props.t('statsRetries')} value={formatStatValue(stats?.retries)} />
+            <Stat label={props.t('statsSucceeded')} value={formatStatValue(stats?.succeeded)} />
+            <Stat label={props.t('statsFailed')} value={formatStatValue(stats?.failed)} />
+            <Stat label={props.t('statsRateLimited')} value={formatStatValue(stats?.rateLimited)} />
+            <Stat label={props.t('statsDenied')} value={formatStatValue(stats?.denied)} />
+            <Stat label={props.t('statsAsked')} value={formatStatValue(stats?.asked)} />
+            <Stat label={props.t('statsCurrentFailures')} value={formatStatValue(stats?.consecutiveFailures)} />
+            <Pill active>{props.t(stats?.degraded === true ? 'statsDegraded' : 'statsNotDegraded')}</Pill>
+            <Stat label={props.t('statsFallbacks')} value={formatStatValue(stats?.fallbacks)} />
+            <Stat label={props.t('statsCalibrations')} value={formatStatValue(stats?.calibrations)} />
+            <Stat label={props.t('statsSentBytes')} value={formatStatValue(stats?.sentBytes, { unit })} />
+            <Stat label={props.t('statsInputTokens')} value={formatStatValue(stats?.inputTokens)} />
+            <Stat label={props.t('statsFactor')} value={formatStatValue(stats?.factor, { fixed: STAT_DECIMALS, placeholder: STAT_PLACEHOLDER })} />
+            <Stat label={props.t('statsLastBytes')} value={formatStatValue(stats?.lastBytes, { unit, placeholder: STAT_PLACEHOLDER })} />
+            <Stat label={props.t('statsLastTokens')} value={formatStatValue(stats?.lastTokens, { placeholder: STAT_PLACEHOLDER })} />
+            <Stat label={props.t('statsLastFactor')} value={formatStatValue(stats?.lastFactor, { fixed: STAT_DECIMALS, placeholder: STAT_PLACEHOLDER })} />
+            <Stat label={props.t('statsTotalMs')} value={formatStatValue(stats?.totalMs, { unit: 'ms', fixed: STAT_DECIMALS })} />
+            <Stat label={props.t('statsAverageMs')} value={formatStatValue(stats?.averageMs, { unit: 'ms', fixed: STAT_DECIMALS })} />
+            <Stat label={props.t('statsLastFallbackAt')} value={formatStatValue(stats?.lastFallbackAt, { placeholder: STAT_PLACEHOLDER, now })} />
+            <Stat label={props.t('statsLastSuccessAt')} value={formatStatValue(stats?.lastSuccessAt, { placeholder: STAT_PLACEHOLDER, now })} />
+            <Stat label={props.t('statsLastFailureAt')} value={formatStatValue(stats?.lastFailureAt, { placeholder: STAT_PLACEHOLDER, now })} />
+        </div>
+    )
+}
+
 /**
  * 渲染配置卡片。
  * @param props - 快照选择器、动作与文案。
@@ -98,6 +149,7 @@ export function Card(props: CardProps) {
     const { t } = props
     const [open, setOpen] = useState(props.defaultOpen ?? true)
     const disabled = !state.writable || state.saving
+    useEffect(() => { if (open) props.refreshStats() }, [open, props.refreshStats])
 
     const test = state.test
     const testNote = test === null
@@ -238,6 +290,10 @@ export function Card(props: CardProps) {
                                 </Row>
                                 <Row>
                                     <p className={testNoteClass} role="status">{testNote.text}</p>
+                                </Row>
+                                <p className="dsh-ar-group">{t('stats')}</p>
+                                <Row>
+                                    <StatsPanel stats={state.stats} t={t} />
                                 </Row>
                             </div>
                             <p className="dsh-ar-group">{t('judgement')}</p>

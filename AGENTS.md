@@ -25,6 +25,7 @@ Node 半与浏览器半分离：`src/*` 进 `lib/index.js`，`src/client/*` 进 
 | `src/snapshot.ts` | 从会话日志冻结审查输入 |
 | `src/history.ts` | 审查历史分层裁剪与折叠占位 |
 | `src/budget.ts` | token 预算自校准：token 因子与字节上限 |
+| `src/stats.ts` | 运行期统计记账、降级动作（会话迁移 + 提示推送）与复位监听、只读路由 |
 | `src/fixed-overhead.ts` | 无法裁剪的固定 state 开销计量 |
 | `src/roles.ts` | 会话条目来源角色归类 |
 | `src/steps.ts` | 回合/步骤身份与作用域键 |
@@ -36,11 +37,11 @@ Node 半与浏览器半分离：`src/*` 进 `lib/index.js`，`src/client/*` 进 
 | `src/systemone-client.ts` | 决策接口 HTTP 调用与响应校验 |
 | `src/probe.ts` | 决策端点连通性测试 |
 | `src/verdict.ts` | 结论落地为工具流水线决定 |
-| `src/fallback.ts` | 连续失败降级与提示推送 |
 | `src/session-exit.ts` | Auto 会话退出去向 |
 | `src/config.ts` | 配置 schema 与加载期校验 |
 | `src/locales.ts` | 审查理由与提示文案 |
 | `src/shared/config.ts` | 配置常量与纯函数（两半共用） |
+| `src/shared/stats.ts` | 审查统计的线形态、载荷读取与时间格式（两半共用） |
 | `src/shared/questions.ts` | 问题 id、问法、因子（纯数据） |
 | `src/shared/bytes.ts` | UTF-8 字节计量 |
 | `src/shared/tools.ts` | 对象记录判定工具 |
