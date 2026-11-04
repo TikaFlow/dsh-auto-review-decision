@@ -42,6 +42,8 @@ const STYLE_TEXT = [
     '.dsh-ar-group+.dsh-ar-item{margin-top:16px}',
     '.dsh-ar-actions{display:flex;justify-content:flex-start;gap:8px}',
     '.dsh-ar-pills{display:flex;justify-content:flex-start;flex-wrap:wrap;gap:8px}',
+    // Pill 的 Tooltip 锚点：inline-flex 保持原有按内容换行
+    '.dsh-ar-pillTip{display:inline-flex}',
     '.dsh-ar-test{flex:none;appearance:none;border:1px solid transparent;border-radius:var(--dsw-radius-md,12px);padding:5px 14px;background:var(--dsw-alias-label-primary,#0f1115);font:inherit;font-size:13px;line-height:1.5;color:var(--dsw-alias-bg-layer-3,#fff);cursor:pointer}',
     '.dsh-ar-test:hover:not(:disabled){opacity:.88}',
     '.dsh-ar-test:disabled{opacity:.4;cursor:default}',

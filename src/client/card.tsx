@@ -16,7 +16,7 @@ import { DEFAULT_CONFIG, PRESET_OPTIONS, type ProbeFailureCode } from '../shared
 import { formatStatValue, type ReviewStats } from '../shared/stats.ts'
 
 const {
-    IconChevronDownOutlineRegular, Menu, Pill, SettingsForm, SettingsSecretField, SettingsValueField, Switch,
+    IconChevronDownOutlineRegular, Menu, Pill, SettingsForm, SettingsSecretField, SettingsValueField, Switch, Tooltip,
 } = primitives
 
 /** 插件侧失败码 → 文案键。 */
@@ -88,8 +88,15 @@ function PresetRow(props: {
     )
 }
 
-function Stat(props: { readonly label: string; readonly value: string }): JSX.Element {
-    return <Pill active>{`${props.label}: ${props.value}`}</Pill>
+/** 一个统计 Pill：悬停显示该统计项的口径说明。 */
+function Stat(props: { readonly label: string; readonly value: string; readonly tip: string }): JSX.Element {
+    return (
+        <Tooltip side="top" portal label={props.tip}>
+            <div className="dsh-ar-pillTip">
+                <Pill active>{`${props.label}: ${props.value}`}</Pill>
+            </div>
+        </Tooltip>
+    )
 }
 
 /** 统计缺值的占位符。 */
@@ -108,33 +115,37 @@ function StatsPanel(props: {
     const unit = props.t('statsBytesUnit')
     return (
         <div className="dsh-ar-pills">
-            <Stat label={props.t('statsReviewCount')} value={formatStatValue(stats?.reviewCount)} />
-            <Stat label={props.t('statsLocalReviews')} value={formatStatValue(stats?.localReviews)} />
-            <Stat label={props.t('statsModelReviews')} value={formatStatValue(stats?.modelReviews)} />
-            <Stat label={props.t('statsConfigErrors')} value={formatStatValue(stats?.configErrors)} />
-            <Stat label={props.t('statsRequests')} value={formatStatValue(stats?.requests)} />
-            <Stat label={props.t('statsRetries')} value={formatStatValue(stats?.retries)} />
-            <Stat label={props.t('statsSucceeded')} value={formatStatValue(stats?.succeeded)} />
-            <Stat label={props.t('statsFailed')} value={formatStatValue(stats?.failed)} />
-            <Stat label={props.t('statsRateLimited')} value={formatStatValue(stats?.rateLimited)} />
-            <Stat label={props.t('statsDenied')} value={formatStatValue(stats?.denied)} />
-            <Stat label={props.t('statsAsked')} value={formatStatValue(stats?.asked)} />
-            <Stat label={props.t('statsCurrentFailures')} value={formatStatValue(stats?.consecutiveFailures)} />
-            <Pill active>{props.t(stats?.degraded === true ? 'statsDegraded' : 'statsNotDegraded')}</Pill>
-            <Stat label={props.t('statsFallbacks')} value={formatStatValue(stats?.fallbacks)} />
-            <Stat label={props.t('statsFactorFallbacks')} value={formatStatValue(stats?.factorFallbacks)} />
-            <Stat label={props.t('statsCalibrations')} value={formatStatValue(stats?.calibrations)} />
-            <Stat label={props.t('statsSentBytes')} value={formatStatValue(stats?.sentBytes, { unit })} />
-            <Stat label={props.t('statsInputTokens')} value={formatStatValue(stats?.inputTokens)} />
-            <Stat label={props.t('statsFactor')} value={formatStatValue(stats?.factor, { fixed: STAT_DECIMALS, placeholder: STAT_PLACEHOLDER })} />
-            <Stat label={props.t('statsLastBytes')} value={formatStatValue(stats?.lastBytes, { unit, placeholder: STAT_PLACEHOLDER })} />
-            <Stat label={props.t('statsLastTokens')} value={formatStatValue(stats?.lastTokens, { placeholder: STAT_PLACEHOLDER })} />
-            <Stat label={props.t('statsLastFactor')} value={formatStatValue(stats?.lastFactor, { fixed: STAT_DECIMALS, placeholder: STAT_PLACEHOLDER })} />
-            <Stat label={props.t('statsTotalMs')} value={formatStatValue(stats?.totalMs, { unit: 'ms', fixed: STAT_DECIMALS })} />
-            <Stat label={props.t('statsAverageMs')} value={formatStatValue(stats?.averageMs, { unit: 'ms', fixed: STAT_DECIMALS })} />
-            <Stat label={props.t('statsLastFallbackAt')} value={formatStatValue(stats?.lastFallbackAt, { placeholder: STAT_PLACEHOLDER, now })} />
-            <Stat label={props.t('statsLastSuccessAt')} value={formatStatValue(stats?.lastSuccessAt, { placeholder: STAT_PLACEHOLDER, now })} />
-            <Stat label={props.t('statsLastFailureAt')} value={formatStatValue(stats?.lastFailureAt, { placeholder: STAT_PLACEHOLDER, now })} />
+            <Stat label={props.t('statsReviewCount')} value={formatStatValue(stats?.reviewCount)} tip={props.t('statsReviewCountTip')} />
+            <Stat label={props.t('statsLocalReviews')} value={formatStatValue(stats?.localReviews)} tip={props.t('statsLocalReviewsTip')} />
+            <Stat label={props.t('statsModelReviews')} value={formatStatValue(stats?.modelReviews)} tip={props.t('statsModelReviewsTip')} />
+            <Stat label={props.t('statsConfigErrors')} value={formatStatValue(stats?.configErrors)} tip={props.t('statsConfigErrorsTip')} />
+            <Stat label={props.t('statsRequests')} value={formatStatValue(stats?.requests)} tip={props.t('statsRequestsTip')} />
+            <Stat label={props.t('statsRetries')} value={formatStatValue(stats?.retries)} tip={props.t('statsRetriesTip')} />
+            <Stat label={props.t('statsSucceeded')} value={formatStatValue(stats?.succeeded)} tip={props.t('statsSucceededTip')} />
+            <Stat label={props.t('statsFailed')} value={formatStatValue(stats?.failed)} tip={props.t('statsFailedTip')} />
+            <Stat label={props.t('statsRateLimited')} value={formatStatValue(stats?.rateLimited)} tip={props.t('statsRateLimitedTip')} />
+            <Stat label={props.t('statsDenied')} value={formatStatValue(stats?.denied)} tip={props.t('statsDeniedTip')} />
+            <Stat label={props.t('statsAsked')} value={formatStatValue(stats?.asked)} tip={props.t('statsAskedTip')} />
+            <Stat label={props.t('statsCurrentFailures')} value={formatStatValue(stats?.consecutiveFailures)} tip={props.t('statsCurrentFailuresTip')} />
+            <Tooltip side="top" portal label={props.t('statsDegradedTip')}>
+                <div className="dsh-ar-pillTip">
+                    <Pill active>{props.t(stats?.degraded === true ? 'statsDegraded' : 'statsNotDegraded')}</Pill>
+                </div>
+            </Tooltip>
+            <Stat label={props.t('statsFallbacks')} value={formatStatValue(stats?.fallbacks)} tip={props.t('statsFallbacksTip')} />
+            <Stat label={props.t('statsFactorFallbacks')} value={formatStatValue(stats?.factorFallbacks)} tip={props.t('statsFactorFallbacksTip')} />
+            <Stat label={props.t('statsCalibrations')} value={formatStatValue(stats?.calibrations)} tip={props.t('statsCalibrationsTip')} />
+            <Stat label={props.t('statsSentBytes')} value={formatStatValue(stats?.sentBytes, { unit })} tip={props.t('statsSentBytesTip')} />
+            <Stat label={props.t('statsInputTokens')} value={formatStatValue(stats?.inputTokens)} tip={props.t('statsInputTokensTip')} />
+            <Stat label={props.t('statsFactor')} value={formatStatValue(stats?.factor, { fixed: STAT_DECIMALS, placeholder: STAT_PLACEHOLDER })} tip={props.t('statsFactorTip')} />
+            <Stat label={props.t('statsLastBytes')} value={formatStatValue(stats?.lastBytes, { unit, placeholder: STAT_PLACEHOLDER })} tip={props.t('statsLastBytesTip')} />
+            <Stat label={props.t('statsLastTokens')} value={formatStatValue(stats?.lastTokens, { placeholder: STAT_PLACEHOLDER })} tip={props.t('statsLastTokensTip')} />
+            <Stat label={props.t('statsLastFactor')} value={formatStatValue(stats?.lastFactor, { fixed: STAT_DECIMALS, placeholder: STAT_PLACEHOLDER })} tip={props.t('statsLastFactorTip')} />
+            <Stat label={props.t('statsTotalMs')} value={formatStatValue(stats?.totalMs, { unit: 'ms', fixed: STAT_DECIMALS })} tip={props.t('statsTotalMsTip')} />
+            <Stat label={props.t('statsAverageMs')} value={formatStatValue(stats?.averageMs, { unit: 'ms', fixed: STAT_DECIMALS })} tip={props.t('statsAverageMsTip')} />
+            <Stat label={props.t('statsLastFallbackAt')} value={formatStatValue(stats?.lastFallbackAt, { placeholder: STAT_PLACEHOLDER, now })} tip={props.t('statsLastFallbackAtTip')} />
+            <Stat label={props.t('statsLastSuccessAt')} value={formatStatValue(stats?.lastSuccessAt, { placeholder: STAT_PLACEHOLDER, now })} tip={props.t('statsLastSuccessAtTip')} />
+            <Stat label={props.t('statsLastFailureAt')} value={formatStatValue(stats?.lastFailureAt, { placeholder: STAT_PLACEHOLDER, now })} tip={props.t('statsLastFailureAtTip')} />
         </div>
     )
 }
