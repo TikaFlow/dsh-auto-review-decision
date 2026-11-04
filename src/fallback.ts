@@ -1,5 +1,5 @@
 /**
- * 连续失败降级：全局累计审查失败，达阈值后降级并把所有 Auto 会话切走。
+ * 连续失败降级：全局累计决策端点失败，达阈值后降级并把所有 Auto 会话切走。
  *
  * 计数与降级都发生在审查调用内部，宿主生命周期无需感知。
  *
@@ -11,10 +11,7 @@ import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'
 import { getReviewConfig } from './config.ts'
 import { exitAutoSessions, resolveExitTarget } from './session-exit.ts'
 import { CONFIG_NS, FALLBACK_FAILURE_THRESHOLD, NOTICE_ROUTE } from './shared/config.ts'
-import { SystemOneCallError } from './systemone-client.ts'
-
-/** 计入降级的失败类别：决策端点不可用。 */
-const COUNTED = new Set<string>(['config', 'timeout', 'network', 'status', 'parse', 'field', 'range'])
+import { FAILURE, SystemOneCallError } from './systemone-client.ts'
 
 /** 一条提示事件。 */
 interface NoticeEvent {
@@ -111,14 +108,26 @@ export class FallbackGuard {
         private readonly publish: (preset: string) => void,
     ) { }
 
-    /** 一次审查成功后清零。 */
+    /** 当前连续失败次数；仅供观测，不参与判定。 */
+    get failureCount(): number {
+        return this.failures
+    }
+
+    /** 一次实际请求成功返回后清零。 */
     succeeded(): void {
         this.failures = 0
     }
 
-    /** 一次审查失败后计数，达阈值则降级并按配置提示。 */
+    /**
+     * 一次实际请求失败后判定：429 说明端点可用、仅被限流，清零且不计失败；
+     * 中止既不计失败也不清零；其余协议失败计一次，达阈值则降级并按配置提示。
+     */
     failed(error: unknown): void {
-        if (!isCountedFailure(error)) return
+        if (!(error instanceof SystemOneCallError)) return
+        // 429：端点可用、仅被限流。
+        if (error.status === 429) return this.succeeded()
+        // 中止：调用方取消或 lifecycle 中止，端点状态未知，计数保持不变。
+        if (error.kind === FAILURE.aborted) return
         this.failures++
         if (this.failures < FALLBACK_FAILURE_THRESHOLD || this.degraded) return
         this.degraded = true
@@ -132,11 +141,6 @@ export class FallbackGuard {
         this.failures = 0
         this.degraded = false
     }
-}
-
-/** 判断一次审查失败是否计入连续失败。 */
-function isCountedFailure(error: unknown): boolean {
-    return error instanceof SystemOneCallError && COUNTED.has(error.kind)
 }
 
 /**

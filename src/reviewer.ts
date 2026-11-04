@@ -49,9 +49,7 @@ export async function decide(
     deps?: ReviewDeps,
 ): Promise<ReviewVerdict> {
     try {
-        const verdict = await review(ctx, agent, exec, signal, shown, deps)
-        getGuard()?.succeeded()
-        return verdict
+        return await review(ctx, agent, exec, signal, shown, deps)
     } catch (error: unknown) {
         // 失败先计数降级，再把错误原样抛给调用方；本次审批结果不被吞。
         getGuard()?.failed(error)
@@ -59,7 +57,7 @@ export async function decide(
     }
 }
 
-/** 不带降级计数的审查主体。 */
+/** 审查主体：本地放行不触及降级计数，仅在决策请求返回后清零。 */
 async function review(
     ctx: Context,
     agent: Agent,
@@ -135,6 +133,9 @@ async function review(
         if (error instanceof SystemOneCallError && error.status !== undefined) fallbackFactor(signature, error.status)
         throw error
     }
+    
+    // 端点成功则清零连续失败计数。
+    getGuard()?.succeeded()
     // 只有拿到有效 token 数才观测：字节数与 token 数必须同源配对。
     const inputTokens = response.usage?.input_tokens
     if (inputTokens !== undefined && Number.isFinite(inputTokens)) observe(signature, metrics.bodyBytes, inputTokens)

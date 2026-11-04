@@ -201,7 +201,7 @@ async function readText(response: Response, signal: AbortSignal, timeout: AbortS
     }
 }
 
-/** 一次 HTTP 429 响应：唯一的可重试失败；重试耗尽后原样抛出，按 status 计入降级。 */
+/** 一次 HTTP 429 响应：唯一的可重试失败；重试耗尽后原样抛出。 */
 class RateLimitedError extends SystemOneCallError {
     constructor(detail: string) {
         super(FAILURE.status, detail, 429)
