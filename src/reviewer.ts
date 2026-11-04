@@ -136,7 +136,8 @@ async function review(
         })
     } catch (error: unknown) {
         // 端点已响应且拒绝（非 200/429）：真实字节密度高于预估，收窄下一次预算后原样抛出。
-        if (error instanceof SystemOneCallError && error.status !== undefined) {
+        if (error instanceof SystemOneCallError && error.status !== undefined && error.status !== 429) {
+            updateState('factorFallback')
             const factor = fallbackFactor(signature, error.status)
             if (factor !== undefined) updateState('factorChange', { factor })
         }

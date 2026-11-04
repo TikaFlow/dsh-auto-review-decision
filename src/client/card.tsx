@@ -122,6 +122,7 @@ function StatsPanel(props: {
             <Stat label={props.t('statsCurrentFailures')} value={formatStatValue(stats?.consecutiveFailures)} />
             <Pill active>{props.t(stats?.degraded === true ? 'statsDegraded' : 'statsNotDegraded')}</Pill>
             <Stat label={props.t('statsFallbacks')} value={formatStatValue(stats?.fallbacks)} />
+            <Stat label={props.t('statsFactorFallbacks')} value={formatStatValue(stats?.factorFallbacks)} />
             <Stat label={props.t('statsCalibrations')} value={formatStatValue(stats?.calibrations)} />
             <Stat label={props.t('statsSentBytes')} value={formatStatValue(stats?.sentBytes, { unit })} />
             <Stat label={props.t('statsInputTokens')} value={formatStatValue(stats?.inputTokens)} />

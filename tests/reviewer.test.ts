@@ -620,6 +620,24 @@ configTest('非 200/429 响应每次失败后回退因子，下一次审查预�
     assert.equal(maxBytes(BUDGET_SIGNATURE, BUDGET_CONTEXT_TOKENS), Math.floor(hardTokens * 2))
 })
 
+configTest('端点拒绝逐次计入因子回退，因子到下限后仍计；429 不计', async () => {
+    resetBudget()
+    const { session, exec } = makeReviewSession()
+    installFallback()
+    const rejected = (): Response => new Response(JSON.stringify({ error: 'context length exceeded' }), { status: 400 })
+    for (let index = 1; index <= 7; index++) {
+        await assert.rejects(reviewOnce(session, exec, rejected))
+        // 到下限后因子不再减小，但每次拒绝仍计一次回退。
+        assert.equal(reviewStats().factorFallbacks, index)
+        assert.equal(budgetState()?.factor, index <= 5 ? 2.5 - 0.25 * index : 1.25)
+    }
+
+    const before = reviewStats().factorFallbacks
+    await reviewRateLimited(session, exec)
+    assert.equal(reviewStats().factorFallbacks, before)
+    assert.equal(budgetState()?.factor, 1.25)
+})
+
 configTest('网络错误、超时、200 解析与字段失败都不回退因子', async () => {
     resetBudget()
     const { session, exec } = makeReviewSession()

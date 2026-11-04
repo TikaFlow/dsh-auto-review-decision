@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { observe, resetBudget } from '../src/budget.ts'
-import { applyFallback, reviewStats, updateState } from '../src/stats.ts'
+import { applyFallback, resetFallbackState, reviewStats, updateState } from '../src/stats.ts'
 import { FALLBACK_FAILURE_THRESHOLD } from '../src/shared/config.ts'
 import {
     formatStatTime,
@@ -46,6 +46,7 @@ test('没有审查时各项为零，四条等式成立且不出现 NaN', () => {
     assert.equal(stats.succeeded + stats.failed + stats.rateLimited, 0)
     assert.equal(stats.consecutiveFailures, 0)
     assert.equal(stats.degraded, false)
+    assert.equal(stats.factorFallbacks, 0)
     assert.equal(stats.averageMs, 0)
     assert.ok(Number.isFinite(stats.averageMs))
     assert.equal(stats.lastSuccessAt, undefined)
@@ -75,6 +76,7 @@ test('面板空账本：累计类全为 0，最近类与时间戳全为 --，不
         stats.asked,
         stats.consecutiveFailures,
         stats.fallbacks,
+        stats.factorFallbacks,
         stats.calibrations,
         stats.inputTokens,
     ]
@@ -318,6 +320,31 @@ test('连续失败恰好在第 10 次触发一次降级，之后同一装载内�
     assert.equal(stats.degraded, true)
 })
 
+test('每次降级各计一次：复位降级标记后再次触发，累计继续增加', () => {
+    reset()
+    const before = Date.now()
+    fail(FALLBACK_FAILURE_THRESHOLD)
+    let stats = reviewStats()
+    assert.equal(stats.fallbacks, 1)
+    assert.ok(stats.lastFallbackAt !== undefined)
+    assert.ok(stats.lastFallbackAt >= before && stats.lastFallbackAt <= Date.now())
+
+    // 重选 Auto 只清连续失败与降级标记，累计次数保留。
+    resetFallbackState()
+    fail(FALLBACK_FAILURE_THRESHOLD)
+    stats = reviewStats()
+    assert.equal(stats.fallbacks, 2)
+    assert.equal(stats.degraded, true)
+    assert.ok(stats.lastFallbackAt !== undefined)
+})
+
+test('因子回退事件按次累计，因子不变化也照计', () => {
+    reset()
+    assert.equal(reviewStats().factorFallbacks, 0)
+    for (let index = 0; index < 4; index++) updateState('factorFallback')
+    assert.equal(reviewStats().factorFallbacks, 4)
+})
+
 test('复位统计即回到未降级，并允许再次触发降级', () => {
     reset()
     fail(FALLBACK_FAILURE_THRESHOLD)
@@ -413,6 +440,7 @@ test('复位统计清空计数、降级标记与全部时间戳', () => {
     assert.equal(stats.denied, 0)
     assert.equal(stats.calibrations, 0)
     assert.equal(stats.fallbacks, 0)
+    assert.equal(stats.factorFallbacks, 0)
     assert.equal(stats.consecutiveFailures, 0)
     assert.equal(stats.degraded, false)
     assert.equal(stats.lastSuccessAt, undefined)
@@ -446,6 +474,8 @@ test('统计载荷缺字段时按默认值构造，不判为不可用', () => {
     assert.equal(empty!.succeeded, 0)
     assert.equal(empty!.failed, 0)
     assert.equal(empty!.rateLimited, 0)
+    assert.equal(empty!.fallbacks, 0)
+    assert.equal(empty!.factorFallbacks, 0)
     assert.equal(empty!.degraded, false)
     assert.equal(empty!.averageMs, 0)
     assert.equal(empty!.factor, undefined)

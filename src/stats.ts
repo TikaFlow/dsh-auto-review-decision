@@ -23,6 +23,7 @@ export type StateEvent =
     | 'rateLimited'
     | 'calibration'
     | 'factorChange'
+    | 'factorFallback'
     | 'verdict'
 
 /** 事件附加观测值；与事件无关的字段忽略。 */
@@ -62,6 +63,7 @@ function emptyStats(): void {
         asked: 0,
         calibrations: 0,
         fallbacks: 0,
+        factorFallbacks: 0,
         consecutiveFailures: 0,
         degraded: false,
         sentBytes: 0,
@@ -108,7 +110,6 @@ function countFailure(at: number): void {
     stats.degraded = true
     stats.fallbacks++
     stats.lastFallbackAt = at
-    // <降级++>
     triggerFallback()
 }
 
@@ -166,6 +167,9 @@ export function updateState(event: StateEvent, data: StateData = {}): void {
             return
         case 'factorChange':
             if (data.factor !== undefined && Number.isFinite(data.factor)) stats.factor = data.factor
+            return
+        case 'factorFallback':
+            stats.factorFallbacks++
             return
         case 'verdict':
             if (data.verdict === 'deny') stats.denied++

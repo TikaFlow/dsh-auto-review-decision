@@ -34,6 +34,8 @@ export interface ReviewStats {
     calibrations: number
     /** 实际降级次数。 */
     fallbacks: number
+    /** 因子回退的次数。 */
+    factorFallbacks: number
     /** 当前连续失败次数；成功、429、重选 Auto、配置更新或插件装载时清零。 */
     consecutiveFailures: number
     /** 本次装载是否已触发降级；重选 Auto 或插件装载时清零。 */
@@ -137,6 +139,7 @@ export function parseStats(payload: unknown): ReviewStats | undefined {
         degraded: payload.degraded === true,
         calibrations: statNumber(payload, 'calibrations') ?? 0,
         fallbacks: statNumber(payload, 'fallbacks') ?? 0,
+        factorFallbacks: statNumber(payload, 'factorFallbacks') ?? 0,
         sentBytes: statNumber(payload, 'sentBytes') ?? 0,
         inputTokens: statNumber(payload, 'inputTokens') ?? 0,
         totalMs: statNumber(payload, 'totalMs') ?? 0,
