@@ -11,7 +11,7 @@ import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { ResolvedCredential } from '@deepseek-ai/dsh-credentials'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { FALLBACK_FAILURE_THRESHOLD } from '../src/shared/config.ts'
-import { CREDENTIAL_REF } from '../src/shared/config.ts'
+import { CREDENTIAL_REF, MIN_CONTEXT_TOKENS } from '../src/shared/config.ts'
 import { byteLength } from '../src/shared/bytes.ts'
 import { budgetState, maxBytes, resetBudget } from '../src/budget.ts'
 import { setConfigInput } from '../src/config.ts'
@@ -119,6 +119,28 @@ function makeReviewSession(argumentsText = '{"path":"a.txt"}'): { session: Sessi
     return { session, exec }
 }
 
+/** 在会话中追加一个独立的 probe 调用步骤，供构造长历史。 */
+function appendProbeStep(session: Session, turn: number, callId: string, argumentsText: string): void {
+    session.append('step/start', { turn, step: 1 })
+    session.append('assistant/message', {
+        turn,
+        step: 1,
+        stream: [],
+        message: createMessage({
+            role: 'assistant',
+            content: [{ type: 'tool-call', id: ToolCallId(callId), name: 'probe', arguments: argumentsText }],
+            source: { kind: 'model', provider: 'review', model: 'review-model' },
+        }),
+    }, { surfaceOp: 'append' })
+    session.append('tool/call', {
+        turn,
+        step: 1,
+        callId: ToolCallId(callId),
+        name: 'probe',
+        arguments: argumentsText,
+    })
+}
+
 interface CapturedCall {
     readonly url: string
     readonly init: RequestInit
@@ -219,13 +241,20 @@ configTest('请求体携带环境、策略原文、问题表与待审调用，�
     assert.equal(init.headers instanceof Headers ? (init.headers as Headers).get('Authorization') : undefined, `Bearer ${API_KEY}`)
     const body = JSON.parse(String(init.body)) as {
         model?: string
-        state: { environment: { cwd: string }; policy: string; history: unknown[]; pending: { name: string; arguments: unknown } }
+        state: {
+            environment: { cwd: string }
+            policy: string
+            history: unknown[]
+            pending: { name: string; arguments: unknown; schema: ToolSchema }
+        }
         questions: unknown
     }
     assert.equal(body.model, 'review-model')
     assert.deepEqual(body.state.environment, { cwd: '/workspace' })
     assert.equal(body.state.policy, REVIEW_POLICY)
-    assert.deepEqual(body.state.pending, { name: 'probe', arguments: { path: 'a.txt' } })
+    assert.deepEqual(body.state.pending, { name: 'probe', arguments: { path: 'a.txt' }, schema: PROBE_SCHEMA })
+    assert.equal(body.state.pending.schema.description, 'live probe description')
+    assert.deepEqual(body.state.pending.schema.parameters, PROBE_SCHEMA.parameters)
     assert.deepEqual(body.questions, decisionQuestions())
     assert.ok(!String(init.body).includes(API_KEY))
 })
@@ -259,6 +288,44 @@ configTest('待审调用的 schema 已登记到 shown，供后续审查复用', 
     assert.ok(key.startsWith('native\0'))
     assert.equal(schema.name, 'probe')
     assert.ok(calls.length === 1)
+})
+
+configTest('长会话裁剪后待审 schema 仍随 pending 发出，历史不再承担 schema', async () => {
+    resetBudget()
+    const saved = configValues.contextTokens
+    configValues.contextTokens = MIN_CONTEXT_TOKENS
+    try {
+        // 先审查首次调用，使该工具的 schema 已登记，后续审查不再重写。
+        const { session, exec: first } = makeReviewSession()
+        const shown = new Map()
+        await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), first, first.signal, shown, {
+            fetchImpl: capturingFetch(() => okResponse(answersWith(1))).fetch,
+        })
+        // 插入超过保留窗口的历史；单条参数足以把预算挤到只剩末十条与待审调用。
+        const bulky = JSON.stringify({ path: 'x'.repeat(4096) })
+        for (let turn = 2; turn <= 21; turn++) appendProbeStep(session, turn, `call-${String(turn)}`, bulky)
+        appendProbeStep(session, 22, 'pending', '{"path":"a.txt"}')
+        const pending = {
+            callId: ToolCallId('pending'),
+            rootCallId: ToolCallId('pending'),
+            name: 'probe',
+            arguments: { path: 'a.txt' },
+            signal: new AbortController().signal,
+        } as ToolExecution
+        const { calls, fetch } = capturingFetch(() => okResponse(answersWith(1)))
+        await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), pending, pending.signal, shown, { fetchImpl: fetch })
+        const body = JSON.parse(String(calls[0]!.init.body)) as {
+            state: { history: Array<{ kind: string }>; pending: { schema: ToolSchema } }
+        }
+        assert.deepEqual(body.state.pending.schema, PROBE_SCHEMA, '裁剪后 pending 仍须携带完整 schema')
+        assert.equal(body.state.pending.schema.description, 'live probe description')
+        assert.deepEqual(body.state.pending.schema.parameters, PROBE_SCHEMA.parameters)
+        // 历史确已裁剪，但待审 schema 不再依赖其中是否留下同名条目。
+        assert.ok(body.state.history.some(entry => entry.kind === 'omitted'), '历史应已被裁剪')
+        assert.equal(body.state.history.at(-1)?.kind, 'tool-call')
+    } finally {
+        configValues.contextTokens = saved
+    }
 })
 
 configTest('全部问题通过判定线时结论为 allow', async () => {

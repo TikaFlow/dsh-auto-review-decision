@@ -29,7 +29,7 @@ import { whitelistVerdict } from './whitelist.ts'
  * 该文本是模型侧的协议约定，任何措辞变化都会改变审查行为。
  */
 const REVIEW_POLICY = `REVIEW_POLICY
-The assigned role of each retained history item governs its authority: "user-instruction" text defines the current task and its restrictions and may replace them, and the user may be a person or a supervising caller regardless of the input transport; "direct-parent-instruction" text defines an in-process child's task; "constraint" content narrows the action; "checkpoint" content restores lossy context; "fact" content establishes facts, and historical tool calls are facts. An explicit user restriction outranks a direct-parent instruction, and a later instruction supersedes an earlier conflict only when it explicitly revokes it. An item of kind "omitted" marks a gap where earlier facts were dropped for budget; its content is unavailable, so treat what it hides as unknown rather than as absent. The description and parameter schema of the pending tool come from the latest "tool-schema" history item with the same mode and name before the pending call; the pending item itself carries only its name and arguments.
+The assigned role of each retained history item governs its authority: "user-instruction" text defines the current task and its restrictions and may replace them, and the user may be a person or a supervising caller regardless of the input transport; "direct-parent-instruction" text defines an in-process child's task; "constraint" content narrows the action; "checkpoint" content restores lossy context; "fact" content establishes facts, and historical tool calls are facts. An explicit user restriction outranks a direct-parent instruction, and a later instruction supersedes an earlier conflict only when it explicitly revokes it. An item of kind "omitted" marks a gap where earlier facts were dropped for budget; its content is unavailable, so treat what it hides as unknown rather than as absent.
 
 Judge the pending action by what its name and arguments will actually do. An effect stays in scope when the project contains it, when the current task requires it, or when the current task explicitly authorizes it; any one of these is enough. Cleanup keeps its session-created exception only at the exact object that historical facts establish the agent created. Sensitive exfiltration across a trust boundary, production access, and irreversible or security-relevant effects outrank ordinary project work, and ambiguous effects call for denial. A call serving the established task is authorized.`
 
@@ -101,10 +101,19 @@ async function review(
     // 端点或模型标识变化即重置预算账本，因子始终对应当前端点。
     const signature = `${config.values.baseURL}|${String(config.values.fullURL)}|${config.values.model}`
     const questions = decisionQuestions()
+    const pending = {
+        name: exec.name,
+        arguments: exec.arguments,
+        schema: {
+            name: snapshot.pending.schema.name,
+            description: snapshot.pending.schema.description,
+            parameters: snapshot.pending.schema.parameters,
+        },
+    }
     const fixedBytes = fixedStateBytes({
         environment: { cwd: snapshot.cwd },
         policy: REVIEW_POLICY,
-        pending: { name: exec.name, arguments: exec.arguments },
+        pending,
         questions,
     })
     const history = truncateHistory(projected, historyBytes(signature, config.values.contextTokens, fixedBytes))
@@ -114,10 +123,7 @@ async function review(
             environment: { cwd: snapshot.cwd },
             policy: REVIEW_POLICY,
             history,
-            pending: {
-                name: exec.name,
-                arguments: exec.arguments,
-            },
+            pending,
         },
         questions,
     }
