@@ -31,7 +31,7 @@ Node 半与浏览器半分离：`src/*` 进 `lib/index.js`，`src/client/*` 进 
 | `src/steps.ts` | 回合/步骤身份与作用域键 |
 | `src/log.ts` | 会话日志读取工具 |
 | `src/args-schema.ts` | 参数本地预检（JSON Schema 子集） |
-| `src/whitelist.ts` | 内置白名单：免审工具与工作区内读取 |
+| `src/whitelist.ts` | 内置白名单：免审工具与受限本地操作 |
 | `src/questions.ts` | 问题表判定规则 |
 | `src/systemone.ts` | 决策接口线协议类型 |
 | `src/systemone-client.ts` | 决策接口 HTTP 调用与响应校验 |
@@ -56,7 +56,7 @@ Node 半与浏览器半分离：`src/*` 进 `lib/index.js`，`src/client/*` 进 
 - 审查请求只发往决策端点，不写入会话日志。
 - 配置项全为 `.volatile()`，改完下次审查即生效。
 - 响应校验不 clamp 越界值；任一卫语句失败一律 `deny`。
-- 白名单在参数预检之后判定：免审调用仍须通过契约校验。
+- 白名单在参数预检之后判定；参数预检不通过时直接本地放行，交由工具自身报错。
 - 凭据走宿主凭据管理（`TIKAFLOW_DECISION_API_KEY`），不得硬编码或回显。
 
 ## 偏好
