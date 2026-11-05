@@ -1,6 +1,6 @@
 /**
  * 连通性测试的回归用例：载荷校验、凭据回落、非法请求体、双发的 usage 缺失与首发限流、
- * 非法上下文窗口退回单发，以及客户端等待窗口的常量约束。
+ * 上下文窗口类型不符退回单发与越界拒绝，以及客户端等待窗口的常量约束。
  *
  * 经宿主测试路由走完整流程，决策请求的 fetch 用桩替换后按脚本回放。
  *
@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { installProbeRoute } from '../src/probe.ts'
-import { CLIENT_TIMEOUT_MS, PROBE_TIMEOUT_MS, TEST_ROUTE } from '../src/shared/config.ts'
+import { CLIENT_TIMEOUT_MS, MAX_CONTEXT_TOKENS, MIN_CONTEXT_TOKENS, PROBE_TIMEOUT_MS, TEST_ROUTE } from '../src/shared/config.ts'
 
 /** 登记到 connection.fetch 的测试路由。 */
 interface RegisteredRoute {
@@ -207,13 +207,38 @@ test('双发首发限流不重试，回传诊断原文', async () => {
     assert.equal(calls.length, 1, '探活不重试，限流也只发一次')
 })
 
-test('contextTokens 非法时退回单发', async () => {
+test('contextTokens 非数字时退回单发', async () => {
     // NaN 无法通过 JSON 承载，序列化后成为 null，与缺失等价，仍应走单发。
-    for (const contextTokens of [0, -1, '8192', Number.NaN]) {
+    for (const contextTokens of ['8192', null, Number.NaN]) {
         const { result, calls } = await fire([], { payload: { ...PAYLOAD, contextTokens } })
         assert.ok(isPassed(result))
-        assert.equal(calls.length, 1, '非法上下文窗口不应进入双发')
+        assert.equal(calls.length, 1, '非数字上下文窗口不应进入双发')
     }
+})
+
+test('contextTokens 越界按载荷非法拒绝', async () => {
+    for (const contextTokens of [MIN_CONTEXT_TOKENS - 1, 0, -1, MAX_CONTEXT_TOKENS + 1]) {
+        const { result, calls } = await fire([], { payload: { ...PAYLOAD, contextTokens } })
+        assert.deepEqual(result, { ok: false, code: 'invalidResponse' })
+        assert.equal(calls.length, 0, '越界上下文窗口不应发出决策请求')
+    }
+})
+
+test('contextTokens 取边界值时进入双发', async () => {
+    for (const contextTokens of [MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS]) {
+        // 首发回报与填充体积相称的词元数，避免因子被抬到极端后把第二发撑爆。
+        const inputTokens = Math.floor(contextTokens * 0.95)
+        const { result, calls } = await fire([() => ok(inputTokens), () => ok(1)], { payload: { ...PAYLOAD, contextTokens } })
+        assert.ok(isPassed(result))
+        assert.equal(calls.length, 2, '边界值应走双发')
+    }
+})
+
+test('超大 contextTokens 不抛异常，回可读错误', async () => {
+    const contextTokens = Number.MAX_SAFE_INTEGER
+    const { result, calls } = await fire([], { payload: { ...PAYLOAD, contextTokens } })
+    assert.deepEqual(result, { ok: false, code: 'invalidResponse' })
+    assert.equal(calls.length, 0, '超大上下文窗口不应发出决策请求')
 })
 
 test('客户端等待窗口等于探活两次尝试的 15 秒', () => {

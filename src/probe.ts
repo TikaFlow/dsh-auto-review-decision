@@ -9,7 +9,15 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { baseURLProblem, CREDENTIAL_REF, PROBE_TIMEOUT_MS, TEST_ROUTE, parseAuthHeader, type ProbeFailureCode } from './shared/config.ts'
+import {
+    baseURLProblem,
+    CREDENTIAL_REF,
+    PROBE_TIMEOUT_MS,
+    TEST_ROUTE,
+    isContextTokensInRange,
+    parseAuthHeader,
+    type ProbeFailureCode,
+} from './shared/config.ts'
 import { byteLength } from './shared/bytes.ts'
 import { isRecord } from './shared/tools.ts'
 import { budgetState, historyBytes, observe, resetBudget, restoreBudget } from './budget.ts'
@@ -55,7 +63,7 @@ interface ProbePayload {
     readonly model: string
     /** 卡片草稿里的密钥；空串表示改用已保存的凭据。 */
     readonly apiKey: string
-    /** 双发测试的上下文窗口（token）；缺省表示单发最小请求。 */
+    /** 双发测试的上下文窗口（token）；缺省表示单发最小请求，越界按载荷非法。 */
     readonly contextTokens?: number
 }
 
@@ -70,7 +78,7 @@ function readPayload(payload: unknown): ProbePayload {
         authHeader: text('authHeader'),
         model: text('model').trim(),
         apiKey: text('apiKey'),
-        contextTokens: typeof tokens === 'number' && Number.isFinite(tokens) && tokens > 0 ? tokens : undefined,
+        contextTokens: typeof tokens === 'number' && Number.isFinite(tokens) ? tokens : undefined,
     }
 }
 
@@ -163,8 +171,7 @@ function fixedBytesOf(call: ProbeCall): number {
 }
 
 /** 双发测试。 */
-async function doubleProbe(body: ProbePayload, call: ProbeCall, signal: AbortSignal): Promise<ProbeResult> {
-    const contextTokens = body.contextTokens as number
+async function doubleProbe(contextTokens: number, call: ProbeCall, signal: AbortSignal): Promise<ProbeResult> {
     // 与正式审查路径同源的观测签名：端点与模型标识的组合。
     const signature = `${call.baseURL}|${String(call.fullURL)}|${call.model}`
     const fixed = fixedBytesOf(call)
@@ -187,15 +194,19 @@ async function doubleProbe(body: ProbePayload, call: ProbeCall, signal: AbortSig
 }
 
 /**
- * 按草稿配置探活；载荷带 `contextTokens` 时走双发测试，否则发单发最小请求。
+ * 按草稿配置探活；载荷带合法 `contextTokens` 时走双发测试，缺省发单发最小请求。
  * @returns 通过与否。
  */
 async function probe(ctx: Context, payload: unknown, signal: AbortSignal): Promise<ProbeResult> {
     const body = readPayload(payload)
     const call = await resolveCall(ctx, body)
     if ('ok' in call) return call
-    if (body.contextTokens === undefined) return singleProbe(call, signal)
-    return doubleProbe(body, call, signal)
+    const contextTokens = body.contextTokens
+    if (contextTokens === undefined) return singleProbe(call, signal)
+    if (!isContextTokensInRange(contextTokens)) {
+        return { ok: false, code: 'invalidResponse' }
+    }
+    return doubleProbe(contextTokens, call, signal)
 }
 
 /** 注册连通性测试路由；无连接服务的 profile 下不注册，届时按钮报失败原因。 */

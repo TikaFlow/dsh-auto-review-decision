@@ -9,10 +9,12 @@ import {
     CONFIG_LABELS,
     DEFAULT_CONFIG,
     MAX_CONFIDENCE_THRESHOLD,
+    MAX_CONTEXT_TOKENS,
     MIN_CONFIDENCE_THRESHOLD,
     MIN_CONTEXT_TOKENS,
     PRESET_OPTIONS,
     baseURLProblem,
+    isContextTokensInRange,
     parseAuthHeader,
     type ConfigKey,
     type PresetOption,
@@ -25,7 +27,7 @@ export const Config = z.object({
     fullURL: z.boolean().default(DEFAULT_CONFIG.fullURL).description(CONFIG_LABELS.fullURL).volatile(),
     authHeader: z.string().default(DEFAULT_CONFIG.authHeader).description(CONFIG_LABELS.authHeader).volatile(),
     model: z.string().default(DEFAULT_CONFIG.model).description(CONFIG_LABELS.model).volatile(),
-    contextTokens: z.natural().min(MIN_CONTEXT_TOKENS).default(DEFAULT_CONFIG.contextTokens)
+    contextTokens: z.natural().min(MIN_CONTEXT_TOKENS).max(MAX_CONTEXT_TOKENS).default(DEFAULT_CONFIG.contextTokens)
         .description(CONFIG_LABELS.contextTokens).volatile(),
     toolWhitelist: z.array(z.string()).default([...DEFAULT_CONFIG.toolWhitelist])
         .description(CONFIG_LABELS.toolWhitelist).volatile(),
@@ -100,8 +102,8 @@ function readContextTokens(input: ConfigInput): number {
     if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
         throw invalid('contextTokens', '必须是正整数')
     }
-    if (value < MIN_CONTEXT_TOKENS) {
-        throw invalid('contextTokens', `必须不小于 ${MIN_CONTEXT_TOKENS}`)
+    if (!isContextTokensInRange(value)) {
+        throw invalid('contextTokens', `必须在 ${MIN_CONTEXT_TOKENS} 与 ${MAX_CONTEXT_TOKENS} 之间`)
     }
     return value
 }

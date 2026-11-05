@@ -51,7 +51,19 @@ export const RECENT_KEEP = 10
 export const HEAD_KEEP = 10
 
 /** 上下文窗口下限（token）。 */
-export const MIN_CONTEXT_TOKENS = 8192
+export const MIN_CONTEXT_TOKENS = 4096
+
+/** 上下文窗口上限（token）。 */
+export const MAX_CONTEXT_TOKENS = 1024 * 1024
+
+/**
+ * 判断 token 数是否落在上下文窗口的允许区间。
+ * @param tokens - 待判断的 token 数。
+ * @returns 是否在 [MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS] 内。
+ */
+export function isContextTokensInRange(tokens: number): boolean {
+    return tokens >= MIN_CONTEXT_TOKENS && tokens <= MAX_CONTEXT_TOKENS
+}
 
 /** 置信度阈值下限。 */
 export const MIN_CONFIDENCE_THRESHOLD = 0.6
@@ -214,7 +226,7 @@ export function parseContextTokens(text: string): number | undefined {
     const value = Number(match[1])
     const unit = match[2].toLowerCase()
     const tokens = value * (unit === '' ? 1 : TOKEN_UNIT_MULTIPLIER[unit])
-    if (!Number.isSafeInteger(tokens) || tokens < MIN_CONTEXT_TOKENS) return undefined
+    if (!Number.isSafeInteger(tokens) || !isContextTokensInRange(tokens)) return undefined
     return tokens
 }
 
