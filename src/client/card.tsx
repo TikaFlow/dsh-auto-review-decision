@@ -162,21 +162,24 @@ export function Card(props: CardProps) {
     const state = props.useCard(snapshot => snapshot)
     const { t } = props
     const [open, setOpen] = useState(props.defaultOpen ?? true)
-    const disabled = !state.writable || state.saving
+    const test = state.test
+    const testDouble = state.testDouble
+    const testing = test?.kind === 'running' || testDouble?.kind === 'running'
+    const disabled = !state.writable || state.saving || testing
     useEffect(() => { if (open) props.refreshStats() }, [open, props.refreshStats])
 
-    const test = state.test
-    const testNote = test === null
+    const shown = state.lastTest === 'double' ? testDouble : test
+    const testNote = shown === null
         ? { tone: 'note', text: t('testHint') }
-        : test.kind === 'running'
-            ? { tone: 'note', text: t('testing') }
-            : test.kind === 'passed'
+        : shown.kind === 'running'
+            ? { tone: 'note', text: state.lastTest === 'double' ? t('testingDouble') : t('testing') }
+            : shown.kind === 'passed'
                 ? { tone: 'passed', text: t('testPassed') }
                 : {
                     tone: 'failed',
-                    text: test.code !== undefined
-                        ? t(PROBE_LABELS[test.code])
-                        : (test.message ?? t('probeFailed')),
+                    text: shown.code !== undefined
+                        ? t(PROBE_LABELS[shown.code])
+                        : (shown.message ?? t('probeFailed')),
                 }
     const testNoteClass = {
         note: 'dsh-ar-testNote dsh-ar-testNote-note',
@@ -246,7 +249,7 @@ export function Card(props: CardProps) {
                                         id="dsh-ar-api-key"
                                         label={t('apiKey')}
                                         hint={t('apiKeyHint')}
-                                        disabled={!state.apiKeyWritable}
+                                        disabled={!state.apiKeyWritable || testing}
                                         text={state.apiKey.text}
                                         configured={state.apiKeyConfigured}
                                         stateLabel={state.apiKeyConfigured ? t('apiKeySet') : t('apiKeyUnset')}
@@ -287,7 +290,7 @@ export function Card(props: CardProps) {
                                         <button
                                             type="button"
                                             className="dsh-ar-test"
-                                            disabled={disabled || !state.testable || test?.kind === 'running'}
+                                            disabled={disabled || !state.testable || state.contextTokens.invalid}
                                             onClick={props.test}
                                         >
                                             {test?.kind === 'running' ? t('testing') : t('test')}
@@ -295,10 +298,10 @@ export function Card(props: CardProps) {
                                         <button
                                             type="button"
                                             className="dsh-ar-test"
-                                            disabled={disabled || !state.testable || test?.kind === 'running'}
+                                            disabled={disabled || !state.testable || state.contextTokens.invalid}
                                             onClick={props.testDouble}
                                         >
-                                            {test?.kind === 'running' ? t('testing') : t('testDouble')}
+                                            {testDouble?.kind === 'running' ? t('testingDouble') : t('testDouble')}
                                         </button>
                                     </div>
                                 </Row>

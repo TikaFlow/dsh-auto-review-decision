@@ -9,7 +9,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { baseURLProblem, CREDENTIAL_REF, REVIEW_TIMEOUT_MS, TEST_ROUTE, parseAuthHeader, type ProbeFailureCode } from './shared/config.ts'
+import { baseURLProblem, CREDENTIAL_REF, PROBE_TIMEOUT_MS, TEST_ROUTE, parseAuthHeader, type ProbeFailureCode } from './shared/config.ts'
 import { byteLength } from './shared/bytes.ts'
 import { isRecord } from './shared/tools.ts'
 import { budgetState, historyBytes, observe, resetBudget, restoreBudget } from './budget.ts'
@@ -131,7 +131,7 @@ async function singleProbe(
     failOf: (error: unknown) => ProbeResult = messageOf,
 ): Promise<ProbeResult> {
     const metrics = { bodyBytes: 0 }
-    const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
+    const timeout = AbortSignal.timeout(PROBE_TIMEOUT_MS)
     try {
         const response = await postDecisionWithRetry(body ?? PROBE_REQUEST, {
             ...call,

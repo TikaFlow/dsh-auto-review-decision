@@ -59,8 +59,14 @@ export const MIN_CONFIDENCE_THRESHOLD = 0.6
 /** 置信度阈值上限：再高则判定几乎必然失败。 */
 export const MAX_CONFIDENCE_THRESHOLD = 0.99
 
-/** 请求超时（毫秒）。 */
+/** 审查单次决策请求尝试的超时（毫秒）。 */
 export const REVIEW_TIMEOUT_MS = 30_000
+
+/** 探活单次尝试的超时（毫秒）：最小固定请求，取审查窗口的一半。 */
+export const PROBE_TIMEOUT_MS = 15_000
+
+/** 浏览器半等待宿主路由的超时（毫秒）：单发与双发测试、统计读取一律 30s。 */
+export const CLIENT_TIMEOUT_MS = 30_000
 
 /** 连续失败降级阈值。 */
 export const FALLBACK_FAILURE_THRESHOLD = 10

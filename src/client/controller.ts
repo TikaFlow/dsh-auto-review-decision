@@ -17,13 +17,13 @@ import {
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { } from '@deepseek-ai/dsh-api-remotes/client'
 import {
+    CLIENT_TIMEOUT_MS,
     CONFIG_NS,
     CREDENTIAL_REF,
     DEFAULT_CONFIG,
     MAX_CONFIDENCE_THRESHOLD,
     MIN_CONFIDENCE_THRESHOLD,
     PRESET_OPTIONS,
-    REVIEW_TIMEOUT_MS,
     STATS_URL,
     TEST_URL,
     baseURLProblem,
@@ -51,6 +51,9 @@ export type TestState = {
     readonly kind: 'running'
 } | TestOutcome | null
 
+/** 一次测试的类别：单发或双发。 */
+export type TestKind = 'single' | 'double'
+
 /** 卡片上一次测试的载体。 */
 interface EndpointProbe {
     readonly baseURL: string
@@ -65,15 +68,17 @@ interface EndpointProbe {
 /**
  * 请求宿主按草稿配置发一次测试请求；载荷带 `contextTokens` 时宿主走双发。
  * 密钥只送到宿主的测试路由，由它代发决策请求，浏览器不直连。
+ * 探活每次尝试 15s，双发串行两次共 30s，故客户端单发与双发都等 30s。
+ * 调用方中止（卡片卸载或作废结果）与超时任一触发都会取消请求，宿主侧随之中止决策调用。
  * @returns 通过与否。
  */
-async function probeEndpoint(probe: EndpointProbe): Promise<TestOutcome> {
+async function probeEndpoint(probe: EndpointProbe, signal: AbortSignal): Promise<TestOutcome> {
     try {
         const response = await fetch(TEST_URL, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(probe),
-            signal: AbortSignal.timeout(REVIEW_TIMEOUT_MS),
+            signal: AbortSignal.any([AbortSignal.timeout(CLIENT_TIMEOUT_MS), signal]),
         })
         if (!response.ok) {
             const reason = (await response.text().catch(() => '')).trim()
@@ -228,8 +233,12 @@ export interface CardState extends SettingsFormShell {
     readonly apiKeyWritable: boolean
     /** 三个必填值（基址、模型、密钥）是否齐备，含草稿。 */
     readonly testable: boolean
-    /** 连通性测试的状态；双发测试写入同一状态，结果行显示最近一次。 */
+    /** 单发测试的状态。 */
     readonly test: TestState
+    /** 双发测试的状态；与单发各自独立。 */
+    readonly testDouble: TestState
+    /** 最近一次启动的测试；状态行展示该次测试的结论，未测过为 null。 */
+    readonly lastTest: TestKind | null
     /** 审查状态统计；尚未读到或路由不可用时为 null。 */
     readonly stats: ReviewStats | null
 }
@@ -268,8 +277,17 @@ export class CardController {
     private readonly store: SnapshotStore<CardState>
     private readonly disposers: (() => void)[] = []
     private credential: CredentialState = { configured: false, writable: true }
-    private outcome: TestState = null
+    /** 单发测试状态。 */
+    private single: TestState = null
+    /** 双发测试状态；与单发各自独立。 */
+    private double: TestState = null
+    /** 最近一次启动的测试类别；决定状态行展示哪一份结论。 */
+    private lastTest: TestKind | null = null
     private stats: ReviewStats | null = null
+    /** 测试代号：每次开始测试或作废结果都递增，返回时不一致即丢弃过期结果。 */
+    private runId = 0
+    /** 在途测试的中止器；作废结果时中止请求，宿主侧同步取消决策调用。 */
+    private abort: AbortController | null = null
 
     /**
      * @param ctx - 浏览器插件上下文，其 `remote.credentials` 命名空间应答凭据读写。
@@ -320,7 +338,9 @@ export class CardController {
             apiKeyWritable: this.credential.writable,
             testable: baseURL.text.trim() !== ''
                 && (apiKey.text.trim() !== '' || this.credential.configured),
-            test: this.outcome,
+            test: this.single,
+            testDouble: this.double,
+            lastTest: this.lastTest,
             stats: this.stats,
         }
     }
@@ -372,17 +392,22 @@ export class CardController {
         }
     }
 
-    /** 作废上次结果：改了配置，旧结论不再对应当前输入。 */
+    /** 作废上次结果：改了配置，旧结论不再对应当前输入；在途请求一并中止并丢弃。 */
     private clearOutcome(): void {
-        if (this.outcome === null) return
-        this.outcome = null
+        this.abort?.abort()
+        this.abort = null
+        this.runId += 1
+        if (this.single === null && this.double === null && this.lastTest === null) return
+        this.single = null
+        this.double = null
+        this.lastTest = null
         this.publish()
     }
 
     /** 读取审查状态统计；路由不可用或载荷不合法时保留上一次结果。 */
     private async readStats(): Promise<void> {
         try {
-            const response = await fetch(STATS_URL, { signal: AbortSignal.timeout(REVIEW_TIMEOUT_MS) })
+            const response = await fetch(STATS_URL, { signal: AbortSignal.timeout(CLIENT_TIMEOUT_MS) })
             if (!response.ok) return
             const stats = parseStats(await response.json())
             if (stats === undefined) return
@@ -392,20 +417,31 @@ export class CardController {
         }
     }
 
+    /** 开始一次测试：作废旧结果，新建中止器，并记下本次类别与代号供返回时校验。 */
+    private beginTest(kind: TestKind): { runId: number; signal: AbortSignal } {
+        this.runId += 1
+        this.abort = new AbortController()
+        this.lastTest = kind
+        if (kind === 'single') this.single = { kind: 'running' }
+        else this.double = { kind: 'running' }
+        this.publish()
+        return { runId: this.runId, signal: this.abort.signal }
+    }
+
     /** 连通性测试：把当前草稿配置交给宿主发一次最小请求。 */
     private async runTest(): Promise<void> {
         const state = this.store.getSnapshot()
-        if (state.baseURL.text.trim() === '') return
-        this.outcome = { kind: 'running' }
-        this.publish()
+        if (state.baseURL.text.trim() === '' || state.contextTokens.invalid) return
+        const run = this.beginTest('single')
         const outcome = await probeEndpoint({
             baseURL: state.baseURL.text.trim(),
             fullURL: state.fullURL,
             authHeader: state.authHeader.text,
             model: state.model.text.trim(),
             apiKey: state.apiKey.text.trim(),
-        })
-        this.outcome = outcome
+        }, run.signal)
+        if (run.runId !== this.runId) return
+        this.single = outcome
         this.publish()
         void this.readStats()
     }
@@ -413,9 +449,8 @@ export class CardController {
     /** 双发测试：按上下文窗口填满请求发两次。 */
     private async runDoubleTest(): Promise<void> {
         const state = this.store.getSnapshot()
-        if (state.baseURL.text.trim() === '') return
-        this.outcome = { kind: 'running' }
-        this.publish()
+        if (state.baseURL.text.trim() === '' || state.contextTokens.invalid) return
+        const run = this.beginTest('double')
         const outcome = await probeEndpoint({
             baseURL: state.baseURL.text.trim(),
             fullURL: state.fullURL,
@@ -423,8 +458,9 @@ export class CardController {
             model: state.model.text.trim(),
             apiKey: state.apiKey.text.trim(),
             contextTokens: parseContextTokens(state.contextTokens.text) ?? DEFAULT_CONFIG.contextTokens,
-        })
-        this.outcome = outcome
+        }, run.signal)
+        if (run.runId !== this.runId) return
+        this.double = outcome
         this.publish()
         void this.readStats()
     }
