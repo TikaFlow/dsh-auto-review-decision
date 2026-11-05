@@ -184,7 +184,7 @@ async function reviewOnce(
     respond: (call: CapturedCall) => Response,
 ): Promise<{ verdict: ReviewVerdict; calls: CapturedCall[] }> {
     const { calls, fetch } = capturingFetch(respond)
-    const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
+    const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, { fetchImpl: fetch })
     return { verdict, calls }
 }
 
@@ -255,11 +255,12 @@ configTest('请求体携带环境、策略原文、问题表与待审调用，�
     assert.deepEqual(body.state.pending, { name: 'probe', arguments: { path: 'a.txt' }, schema: PROBE_SCHEMA })
     assert.equal(body.state.pending.schema.description, 'live probe description')
     assert.deepEqual(body.state.pending.schema.parameters, PROBE_SCHEMA.parameters)
+    assert.deepEqual(Object.keys(body.state.pending.schema).sort(), ['description', 'name', 'parameters'])
     assert.deepEqual(body.questions, decisionQuestions())
     assert.ok(!String(init.body).includes(API_KEY))
 })
 
-configTest('history 依次携带用户指令、模型说明、工具 schema 与历史调用', async () => {
+configTest('history 依次携带用户指令、模型说明与历史调用，且不含工具 schema', async () => {
     const { session, exec } = makeReviewSession()
     const { calls } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
     const body = JSON.parse(String(calls[0]!.init.body)) as {
@@ -269,39 +270,22 @@ configTest('history 依次携带用户指令、模型说明、工具 schema 与�
     assert.deepEqual(history.map(entry => [entry.kind, entry.role]), [
         ['user-message', 'user-instruction'],
         ['assistant-claim', 'fact'],
-        ['tool-schema', 'fact'],
         ['tool-call', 'fact'],
     ])
+    assert.ok(history.every(entry => entry.kind !== 'tool-schema'), 'history 中不应出现 tool-schema 角色')
     assert.equal(history[0]!.name, undefined)
-    assert.equal(history[2]!.name, 'probe')
-    assert.equal(history[3]!.arguments, '{"path":"a.txt"}')
     assert.equal(history[1]!.text, '我来删除临时文件')
+    assert.equal(history[2]!.name, 'probe')
+    assert.equal(history[2]!.arguments, '{"path":"a.txt"}')
 })
 
-configTest('待审调用的 schema 已登记到 shown，供后续审查复用', async () => {
-    const { session, exec } = makeReviewSession()
-    const shown = new Map()
-    const { calls, fetch } = capturingFetch(() => okResponse(answersWith(1)))
-    await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, shown, { fetchImpl: fetch })
-    assert.equal(shown.size, 1)
-    const [key, schema] = [...shown.entries()][0]!
-    assert.ok(key.startsWith('native\0'))
-    assert.equal(schema.name, 'probe')
-    assert.ok(calls.length === 1)
-})
-
-configTest('长会话裁剪后待审 schema 仍随 pending 发出，历史不再承担 schema', async () => {
+configTest('长会话裁剪后待审 schema 仍随 pending 发出，历史不携带 schema', async () => {
     resetBudget()
     const saved = configValues.contextTokens
     configValues.contextTokens = MIN_CONTEXT_TOKENS
     try {
-        // 先审查首次调用，使该工具的 schema 已登记，后续审查不再重写。
-        const { session, exec: first } = makeReviewSession()
-        const shown = new Map()
-        await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), first, first.signal, shown, {
-            fetchImpl: capturingFetch(() => okResponse(answersWith(1))).fetch,
-        })
         // 插入超过保留窗口的历史；单条参数足以把预算挤到只剩末十条与待审调用。
+        const { session } = makeReviewSession()
         const bulky = JSON.stringify({ path: 'x'.repeat(4096) })
         for (let turn = 2; turn <= 21; turn++) appendProbeStep(session, turn, `call-${String(turn)}`, bulky)
         appendProbeStep(session, 22, 'pending', '{"path":"a.txt"}')
@@ -312,16 +296,16 @@ configTest('长会话裁剪后待审 schema 仍随 pending 发出，历史不再
             arguments: { path: 'a.txt' },
             signal: new AbortController().signal,
         } as ToolExecution
-        const { calls, fetch } = capturingFetch(() => okResponse(answersWith(1)))
-        await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), pending, pending.signal, shown, { fetchImpl: fetch })
+        const { calls } = await reviewOnce(session, pending, () => okResponse(answersWith(1)))
         const body = JSON.parse(String(calls[0]!.init.body)) as {
             state: { history: Array<{ kind: string }>; pending: { schema: ToolSchema } }
         }
         assert.deepEqual(body.state.pending.schema, PROBE_SCHEMA, '裁剪后 pending 仍须携带完整 schema')
         assert.equal(body.state.pending.schema.description, 'live probe description')
         assert.deepEqual(body.state.pending.schema.parameters, PROBE_SCHEMA.parameters)
-        // 历史确已裁剪，但待审 schema 不再依赖其中是否留下同名条目。
+        // 历史确已裁剪，且任何情况下都不再出现 tool-schema 条目。
         assert.ok(body.state.history.some(entry => entry.kind === 'omitted'), '历史应已被裁剪')
+        assert.ok(body.state.history.every(entry => entry.kind !== 'tool-schema'), 'history 中不应出现 tool-schema 角色')
         assert.equal(body.state.history.at(-1)?.kind, 'tool-call')
     } finally {
         configValues.contextTokens = saved
@@ -356,7 +340,7 @@ configTest('总分不足且高于拒绝线时落为 ask 并携带问题标签', 
 configTest('参数明显违反契约时直接放行，不发出决策请求', async () => {
     const { session, exec } = makeReviewSession('{"path":123}')
     const { calls, fetch } = capturingFetch(() => { throw new Error('must not be called') })
-    const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
+    const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, { fetchImpl: fetch })
     assert.deepEqual(verdict, { kind: 'allow' })
     assert.equal(calls.length, 0)
 })
@@ -366,7 +350,7 @@ configTest('用户白名单命中的工具免审且不发出决策请求', async
     configValues.toolWhitelist = ['probe']
     try {
         const { calls, fetch } = capturingFetch(() => { throw new Error('must not be called') })
-        const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch })
+        const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, { fetchImpl: fetch })
         assert.deepEqual(verdict, { kind: 'allow' })
         assert.equal(calls.length, 0)
     } finally {
@@ -417,7 +401,7 @@ configTest('网络失败归类为 network，错误信息不含密钥', async () 
     const { session, exec } = makeReviewSession()
     const { fetch } = capturingFetch(() => { throw new Error('connection refused') })
     await assert.rejects(
-        decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch }),
+        decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, { fetchImpl: fetch }),
         (error: unknown) => {
             assert.ok(error instanceof SystemOneCallError)
             assert.equal(error.kind, FAILURE.network)
@@ -432,7 +416,7 @@ configTest('凭据未配置时归类为 config 失败且不发请求', async () 
     const { session, exec } = makeReviewSession()
     const { calls, fetch } = capturingFetch(() => { throw new Error('must not be called') })
     await assert.rejects(
-        decide(makeCtx(undefined), makeAgent(session), exec, exec.signal, new Map(), { fetchImpl: fetch }),
+        decide(makeCtx(undefined), makeAgent(session), exec, exec.signal, { fetchImpl: fetch }),
         (error: unknown) => {
             assert.ok(error instanceof SystemOneCallError)
             assert.equal(error.kind, FAILURE.config)
@@ -528,7 +512,7 @@ configTest('免审放行与参数预检放行都不清零已有失败计数', as
 
     configValues.toolWhitelist = ['probe']
     try {
-        const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, new Map(), {
+        const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(session), exec, exec.signal, {
             fetchImpl: capturingFetch(() => { throw new Error('must not be called') }).fetch,
         })
         assert.deepEqual(verdict, { kind: 'allow' })
@@ -538,7 +522,7 @@ configTest('免审放行与参数预检放行都不清零已有失败计数', as
     assert.equal(reviewStats().consecutiveFailures, FALLBACK_FAILURE_THRESHOLD - 1)
 
     const invalid = makeReviewSession('{"path":123}')
-    const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(invalid.session), invalid.exec, invalid.exec.signal, new Map(), {
+    const verdict = await decide(makeCtx({ value: API_KEY, source: 'test' }), makeAgent(invalid.session), invalid.exec, invalid.exec.signal, {
         fetchImpl: capturingFetch(() => { throw new Error('must not be called') }).fetch,
     })
     assert.deepEqual(verdict, { kind: 'allow' })

@@ -6,7 +6,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import { Session, SessionId, type SessionEvent, type SessionSeq } from '@deepseek-ai/dsh-session'
 import { snapshotAutoReview } from '../src/snapshot.ts'
-import type { HistoricalEntry, HistoricalToolSchema, ReviewSnapshot } from '../src/types.ts'
+import type { HistoricalEntry, ReviewSnapshot } from '../src/types.ts'
 
 const PROBE_SCHEMA: ToolSchema = {
     name: 'probe',
@@ -135,8 +135,8 @@ function runCodeExec(callId: string): ToolExecution {
     } as ToolExecution
 }
 
-function freeze(session: Session, exec: ToolExecution, shown: ReadonlyMap<string, HistoricalToolSchema> = new Map()): ReviewSnapshot {
-    return snapshotAutoReview({ session } as unknown as Agent, exec, '/workspace', shown)
+function freeze(session: Session, exec: ToolExecution): ReviewSnapshot {
+    return snapshotAutoReview({ session } as unknown as Agent, exec, '/workspace')
 }
 
 function asUserMessage(entry: HistoricalEntry): Extract<HistoricalEntry, { kind: 'user-message' }> {
@@ -146,11 +146,6 @@ function asUserMessage(entry: HistoricalEntry): Extract<HistoricalEntry, { kind:
 
 function asToolCall(entry: HistoricalEntry): Extract<HistoricalEntry, { kind: 'tool-call' }> {
     assert.equal(entry.kind, 'tool-call')
-    return entry
-}
-
-function asSchema(entry: HistoricalEntry): Extract<HistoricalEntry, { kind: 'tool-schema' }> {
-    assert.equal(entry.kind, 'tool-schema')
     return entry
 }
 
@@ -190,7 +185,7 @@ test('系统消息、工具结果与工具来源的用户消息不进入历史',
     }, { surfaceOp: 'append' })
     const exec = seedPendingCall(session, 'call-1')
     const { history } = freeze(session, exec)
-    assert.deepEqual(history.map(entry => entry.kind), ['user-message', 'user-message', 'assistant-claim', 'tool-schema', 'tool-call'])
+    assert.deepEqual(history.map(entry => entry.kind), ['user-message', 'user-message', 'assistant-claim', 'tool-call'])
     assert.equal(asUserMessage(history[0]!).role, 'fact')
     assert.equal(asUserMessage(history[1]!).role, 'user-instruction')
     assert.ok(!JSON.stringify(history).includes('系统提示'))
@@ -216,7 +211,7 @@ test('历史助手消息不产生 claim，正文与推理块一律不落地', ()
     ])
     appendCall(session, 1, 2, 'call-2')
     const { history } = freeze(session, nativeExec('call-2'))
-    assert.deepEqual(history.map(entry => entry.kind), ['user-message', 'tool-call', 'assistant-claim', 'tool-schema', 'tool-call'])
+    assert.deepEqual(history.map(entry => entry.kind), ['user-message', 'tool-call', 'assistant-claim', 'tool-call'])
     assert.equal(asToolCall(history[1]!).arguments, '{"path":"a.txt"}')
     assert.equal(history[2]!.kind === 'assistant-claim' ? history[2].text : '', '第二步说明')
     assert.ok(!JSON.stringify(history).includes('内部推理'))
@@ -231,7 +226,7 @@ test('agent-instructions 落为 constraint，空内容整体跳过', () => {
     appendUser(session, [], instructions)
     const exec = seedPendingCall(session, 'call-1')
     const { history } = freeze(session, exec)
-    assert.deepEqual(history.map(entry => entry.kind), ['user-message', 'user-message', 'assistant-claim', 'tool-schema', 'tool-call'])
+    assert.deepEqual(history.map(entry => entry.kind), ['user-message', 'user-message', 'assistant-claim', 'tool-call'])
     assert.equal(asUserMessage(history[0]!).role, 'constraint')
     assert.equal(asUserMessage(history[1]!).role, 'user-instruction')
 })
@@ -298,29 +293,6 @@ test('未启动的历史调用被剔除，不进入历史', () => {
     assert.equal(asToolCall(calls[0]!).name, 'probe')
 })
 
-test('第二次审查完整包含第一次条目且同名 schema 只出现一次', () => {
-    const session = makeSession()
-    appendHeader(session, [PROBE_SCHEMA])
-    appendUser(session, [{ type: 'text', text: '分两步处理' }], { kind: 'user' })
-    openStep(session, 1, 1)
-    appendAssistant(session, 1, 1, [
-        { type: 'tool-call', id: ToolCallId('call-1'), name: 'probe', arguments: '{"path":"a.txt"}' },
-    ])
-    appendCall(session, 1, 1, 'call-1')
-    const shown = new Map<string, HistoricalToolSchema>()
-    const first = freeze(session, nativeExec('call-1'), shown)
-    shown.set(first.pending.key, first.pending.schema)
-    openStep(session, 1, 2)
-    appendAssistant(session, 1, 2, [
-        { type: 'tool-call', id: ToolCallId('call-2'), name: 'probe', arguments: '{"path":"a.txt"}' },
-    ])
-    appendCall(session, 1, 2, 'call-2')
-    const second = freeze(session, nativeExec('call-2'), shown)
-    assert.deepEqual(second.history.slice(0, first.history.length), [...first.history])
-    assert.equal(second.history.filter(entry => entry.kind === 'tool-schema').length, 1)
-    assert.ok(Object.isFrozen(second))
-})
-
 test('PTC 内层调用按派发记录与绑定 schema 送审，外层 run_code 进历史', () => {
     const session = makeSession()
     appendHeader(session, [PROBE_SCHEMA])
@@ -333,15 +305,13 @@ test('PTC 内层调用按派发记录与绑定 schema 送审，外层 run_code �
     appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
     appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
     const snapshot = freeze(session, ptcExec('sub-1', 'root-1'))
-    assert.equal(snapshot.pending.key, ['ptc-inner', 1, 1, 'sub-1'].join('\0'))
-    assert.equal(snapshot.pending.schema.mode, 'ptc-inner')
     assert.equal(snapshot.pending.schema.name, 'inner-tool')
-    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'assistant-claim', 'tool-call', 'tool-schema', 'tool-call'])
+    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'assistant-claim', 'tool-call', 'tool-call'])
     const rootCall = asToolCall(snapshot.history[2]!)
     assert.equal(rootCall.mode, 'native')
     assert.equal(rootCall.name, 'run_code')
     assert.equal(rootCall.arguments, '{"code":"return 1"}')
-    const pendingCall = asToolCall(snapshot.history[4]!)
+    const pendingCall = asToolCall(snapshot.history[3]!)
     assert.equal(pendingCall.mode, 'ptc-inner')
     assert.equal(pendingCall.arguments, JSON.stringify({ code: 'return 1' }, null, 2))
 })
@@ -361,8 +331,7 @@ test('native callId 跨步骤复用按步骤作用域区分：旧调用进历史
     ])
     appendCall(session, 1, 2, 'dup')
     const snapshot = freeze(session, nativeExec('dup'))
-    assert.equal(snapshot.pending.key, ['native', 1, 2, 'dup'].join('\0'))
-    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'tool-call', 'tool-schema', 'tool-call'])
+    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'tool-call', 'tool-call'])
     assert.equal(asToolCall(snapshot.history[1]!).mode, 'native')
 })
 
@@ -397,8 +366,7 @@ test('subCallId 跨步骤复用不歧义：旧派发进历史、当前派发为�
     appendCall(session, 1, 2, 'root-2', 'run_code', '{"code":"return 1"}')
     appendPtcStart(session, 1, 2, 'sub-1', 'root-2')
     const snapshot = freeze(session, ptcExec('sub-1', 'root-2'))
-    assert.equal(snapshot.pending.key, ['ptc-inner', 1, 2, 'sub-1'].join('\0'))
-    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'tool-call', 'tool-call', 'tool-call', 'tool-schema', 'tool-call'])
+    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'tool-call', 'tool-call', 'tool-call', 'tool-call'])
     const oldDispatch = asToolCall(snapshot.history[2]!)
     assert.equal(oldDispatch.mode, 'ptc-inner')
     assert.equal(oldDispatch.name, 'inner-tool')
@@ -448,10 +416,8 @@ test('外层 run_code 待审时其下已记录派发以 PTC 内层条目进历�
     appendCall(session, 1, 1, 'root-1', 'run_code', '{"code":"return 1"}')
     appendPtcStart(session, 1, 1, 'sub-1', 'root-1')
     const snapshot = freeze(session, runCodeExec('root-1'))
-    assert.equal(snapshot.pending.key, ['native', 1, 1, 'root-1'].join('\0'))
-    assert.equal(snapshot.pending.schema.mode, 'native')
     assert.equal(snapshot.pending.schema.name, 'run_code')
-    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'tool-call', 'tool-schema', 'tool-call'])
+    assert.deepEqual(snapshot.history.map(entry => entry.kind), ['user-message', 'tool-call', 'tool-call'])
     const dispatchEntry = asToolCall(snapshot.history[1]!)
     assert.equal(dispatchEntry.mode, 'ptc-inner')
     assert.equal(dispatchEntry.name, 'inner-tool')

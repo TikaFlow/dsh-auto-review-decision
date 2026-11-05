@@ -4,7 +4,7 @@
  * @module dsh-auto-review-decision/types
  */
 
-import type { ContentBlock, MessageSource } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, MessageSource, ToolSchema } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
 /** 一条保留历史条目所携带的来源权威性角色。 */
@@ -35,16 +35,6 @@ interface HistoricalToolCall {
     readonly arguments: string
 }
 
-/** 描述某次调用所用工具的一条 schema 记录。 */
-export interface HistoricalToolSchema {
-    readonly kind: 'tool-schema'
-    readonly role: 'fact'
-    readonly mode: CallMode
-    readonly name: string
-    readonly description: string
-    readonly parameters: Record<string, unknown>
-}
-
 /** 模型在发起调用前写下的说明：它声称自己要做什么。 */
 export interface HistoricalAssistantClaim {
     readonly kind: 'assistant-claim'
@@ -67,23 +57,16 @@ export interface HistoricalOmitted {
 export type HistoricalEntry =
     | HistoricalUserMessage
     | HistoricalToolCall
-    | HistoricalToolSchema
     | HistoricalAssistantClaim
     | HistoricalOmitted
-
-/**
- * 同一会话此前审查已展示过的 schema，按“模式 + 作用域调用键”索引。
- * 后续审查会在同一历史位置重复它，使每次审查的历史是上一次的前缀扩展。
- */
-export type ShownSchemas = Map<string, HistoricalToolSchema>
 
 /** 供审查者使用的一份冻结输入。 */
 export interface ReviewSnapshot {
     readonly cwd: string
     /** 按会话顺序排列的保留条目，最后一条是待审调用。 */
     readonly history: readonly HistoricalEntry[]
-    /** 待审调用的“模式限定作用域键”及其 schema。 */
-    readonly pending: { readonly key: string; readonly schema: HistoricalToolSchema }
+    /** 待审工具的 schema。 */
+    readonly pending: { readonly schema: ToolSchema }
 }
 
 /** 会话日志中的一条原生工具调用事件。 */

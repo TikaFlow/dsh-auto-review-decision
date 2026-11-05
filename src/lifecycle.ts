@@ -8,7 +8,6 @@ import { FiberState, type Context } from '@deepseek-ai/cordis'
 import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { RUN_CODE_NAME, type PreToolDecision } from '@deepseek-ai/dsh-tools'
-import type { ShownSchemas } from './types.ts'
 import { getReviewConfig } from './config.ts'
 import { isAborted } from './log.ts'
 import { decide } from './reviewer.ts'
@@ -21,7 +20,6 @@ export function applyLifecycle(ctx: Context): void {
     const permissionPresets = ctx.permissionPresets
     let accepting = true
     const active = new Set<Promise<void>>()
-    const shownBySession = new WeakMap<Session, ShownSchemas>()
     const lifecycle = new AbortController()
 
     ctx.effect(function* () {
@@ -41,12 +39,7 @@ export function applyLifecycle(ctx: Context): void {
             active.add(completed.promise)
             try {
                 const signal = AbortSignal.any([exec.signal, lifecycle.signal])
-                let shown = shownBySession.get(agent.session)
-                if (shown === undefined) {
-                    shown = new Map()
-                    shownBySession.set(agent.session, shown)
-                }
-                const review = await decide(ctx, agent, exec, signal, shown).then(
+                const review = await decide(ctx, agent, exec, signal).then(
                     verdict => ({ ok: true as const, verdict }),
                     (error: unknown) => ({ ok: false as const, error }),
                 )

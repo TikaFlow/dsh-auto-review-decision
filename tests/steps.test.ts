@@ -6,7 +6,6 @@ import {
     sameStep,
     scopePtcStarts,
     scopedCallKey,
-    shownSchemaKey,
     stepIdentity,
 } from '../src/steps.ts'
 
@@ -81,13 +80,6 @@ test('scopedCallKey 用分隔符防止数字拼接歧义', () => {
     const split = scopedCallKey({ turn: 1, step: 1 }, ToolCallId('01'))
     const joined = scopedCallKey({ turn: 1, step: 10 }, ToolCallId('1'))
     assert.ok(split !== joined)
-})
-
-test('shownSchemaKey 按模式前缀区分同一作用域键', () => {
-    const key = scopedCallKey({ turn: 1, step: 0 }, ToolCallId('c1'))
-    assert.ok(shownSchemaKey('native', key) !== shownSchemaKey('ptc-inner', key))
-    assert.equal(shownSchemaKey('native', key), shownSchemaKey('native', key))
-    assert.ok(shownSchemaKey('native', key) !== shownSchemaKey('native', `${key}x`))
 })
 
 test('scopePtcStarts 把 dispatch 归入被记录时打开的步骤并返回当前打开步骤', () => {

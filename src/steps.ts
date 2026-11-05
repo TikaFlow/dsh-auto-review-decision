@@ -6,7 +6,7 @@
 
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { CallMode, ScopedPtcStart, StepIdentity } from './types.ts'
+import type { ScopedPtcStart, StepIdentity } from './types.ts'
 
 /** 复制一次核心执行事件所携带的回合与步骤标识。 */
 export function stepIdentity(data: { readonly turn: number; readonly step: number }): StepIdentity {
@@ -21,11 +21,6 @@ export function sameStep(left: StepIdentity, right: StepIdentity): boolean {
 /** 在拥有该生命周期的步骤内为一次调用 id 生成键。 */
 export function scopedCallKey(step: StepIdentity, callId: ToolCallId): string {
     return `${step.turn}\0${step.step}\0${callId}`
-}
-
-/** 按模式与作用域调用键生成已展示 schema 的键。 */
-export function shownSchemaKey(mode: CallMode, scopedKey: string): string {
-    return `${mode}\0${scopedKey}`
 }
 
 /** 把每条 PTC 起始事件归入其被记录时处于打开状态的步骤。 */

@@ -12,7 +12,6 @@ import type {
     CallMode,
     HistoricalAssistantClaim,
     HistoricalEntry,
-    HistoricalToolSchema,
     NativeCallEvent,
     ReviewSnapshot,
     ScopedPtcStart,
@@ -33,21 +32,15 @@ import {
     sameStep,
     scopedCallKey,
     scopePtcStarts,
-    shownSchemaKey,
     stepIdentity,
 } from './steps.ts'
-
-/** 构造描述某次调用所用工具的历史条目。 */
-function toolSchemaEntry(mode: CallMode, schema: ToolSchema): HistoricalToolSchema {
-    return { kind: 'tool-schema', role: 'fact', mode, name: schema.name, description: schema.description, parameters: schema.parameters }
-}
 
 /** 从可见调用与最新请求头中解析一次原生动作的 schema。 */
 function nativeAction(
     exec: ToolExecution,
     headerTools: readonly ToolSchema[] | undefined,
     logged: NativeCallEvent,
-): HistoricalToolSchema {
+): ToolSchema {
     if (logged.data.name !== exec.name
         || !sameJson(parseLoggedArguments(logged.data.arguments), exec.arguments)) {
         throw new Error('auto-review: the pending native call disagrees with its logged action')
@@ -59,7 +52,7 @@ function nativeAction(
     if (candidate === undefined || schemas.length !== 1) {
         throw new Error('auto-review: the pending native tool schema is missing or ambiguous')
     }
-    return toolSchemaEntry('native', loggedSchema(candidate, exec.name, 'native'))
+    return loggedSchema(candidate, exec.name, 'native')
 }
 
 /** 从绑定与已记录身份中解析一次 PTC 内层动作的 schema。 */
@@ -67,7 +60,7 @@ function ptcAction(
     exec: ToolExecution,
     start: ScopedPtcStart,
     visibleParentKeys: ReadonlySet<string>,
-): HistoricalToolSchema {
+): ToolSchema {
     const { event } = start
     if (!visibleParentKeys.has(scopedCallKey(start.step, event.data.parentCallId))
         || event.data.rootCallId !== exec.rootCallId
@@ -78,7 +71,7 @@ function ptcAction(
     if (exec.schema === undefined || exec.schema.name !== exec.name) {
         throw new Error('auto-review: the pending PTC binding schema is missing or inconsistent')
     }
-    return toolSchemaEntry('ptc-inner', loggedSchema(exec.schema, exec.name, 'PTC'))
+    return loggedSchema(exec.schema, exec.name, 'PTC')
 }
 
 /** 提取待审调用所在那条消息里模型写下的说明。 */
@@ -101,14 +94,12 @@ function assistantClaim(
  * @param agent - 其持久表面与请求头为该调用提供授权的 agent。
  * @param exec - 不可变的待执行动作。
  * @param cwd - 会话当前工作目录。
- * @param shown - 该会话此前审查已展示的 schema。
  * @returns 精确的环境，以及以待审调用结尾的历史。
  */
 export function snapshotAutoReview(
     agent: Agent,
     exec: ToolExecution,
     cwd: string,
-    shown: ReadonlyMap<string, HistoricalToolSchema>,
 ): ReviewSnapshot {
     const { session } = agent
     // 审查者的风险输入是完整的动作历史：此前的原生调用与 PTC 起始事件携带了
@@ -162,19 +153,7 @@ export function snapshotAutoReview(
     }
 
     const history: HistoricalEntry[] = []
-    const emittedSchemas = new Set<string>()
-    // 一次调用的 schema 只在首次使用它的调用之前出现一次。
-    const pushCall = (
-        mode: CallMode,
-        key: string,
-        name: string,
-        rawArguments: string,
-        schema = shown.get(key),
-    ): void => {
-        if (schema !== undefined && !emittedSchemas.has(JSON.stringify(schema))) {
-            emittedSchemas.add(JSON.stringify(schema))
-            history.push(schema)
-        }
+    const pushCall = (mode: CallMode, name: string, rawArguments: string): void => {
         history.push({ kind: 'tool-call', role: 'fact', mode, name, arguments: rawArguments })
     }
     const visibleParentKeys = new Set<string>()
@@ -248,12 +227,11 @@ export function snapshotAutoReview(
             }
             visibleParentKeys.add(key)
             if (call !== currentRootCall || exec.parent !== undefined) {
-                pushCall('native', shownSchemaKey('native', key), call.data.name, call.data.arguments)
+                pushCall('native', call.data.name, call.data.arguments)
             }
             for (const start of startsForCall) {
                 if (start === currentPtcStart) continue
-                const subCallKey = scopedCallKey(start.step, start.event.data.subCallId)
-                pushCall('ptc-inner', shownSchemaKey('ptc-inner', subCallKey), start.event.data.name, json(start.event.data.arguments))
+                pushCall('ptc-inner', start.event.data.name, json(start.event.data.arguments))
             }
             if (isCurrentRoot) passedCurrentRoot = true
         }
@@ -265,17 +243,11 @@ export function snapshotAutoReview(
 
     let pending: ReviewSnapshot['pending']
     if (currentPtcStart === undefined) {
-        pending = {
-            key: shownSchemaKey('native', scopedCallKey(currentStep, exec.rootCallId)),
-            schema: nativeAction(exec, header.tools, currentRootCall),
-        }
-        pushCall('native', pending.key, exec.name, currentRootCall.data.arguments, pending.schema)
+        pending = { schema: nativeAction(exec, header.tools, currentRootCall) }
+        pushCall('native', exec.name, currentRootCall.data.arguments)
     } else {
-        pending = {
-            key: shownSchemaKey('ptc-inner', scopedCallKey(currentStep, exec.callId)),
-            schema: ptcAction(exec, currentPtcStart, visibleParentKeys),
-        }
-        pushCall('ptc-inner', pending.key, exec.name, json(currentPtcStart.event.data.arguments), pending.schema)
+        pending = { schema: ptcAction(exec, currentPtcStart, visibleParentKeys) }
+        pushCall('ptc-inner', exec.name, json(currentPtcStart.event.data.arguments))
     }
     return deepFreeze({
         cwd,

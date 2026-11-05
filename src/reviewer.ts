@@ -9,7 +9,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { ReviewVerdict } from './questions.ts'
-import type { ShownSchemas } from './types.ts'
 import type { SystemOneResponse } from './systemone.ts'
 import { truncateHistory } from './history.ts'
 import { fallbackFactor, historyBytes, observe } from './budget.ts'
@@ -45,11 +44,10 @@ export async function decide(
     agent: Agent,
     exec: ToolExecution,
     signal: AbortSignal,
-    shown: ShownSchemas,
     deps?: ReviewDeps,
 ): Promise<ReviewVerdict> {
     updateState('review')
-    const verdict = await review(ctx, agent, exec, signal, shown, deps)
+    const verdict = await review(ctx, agent, exec, signal, deps)
     updateState('verdict', { verdict: verdict.kind })
     return verdict
 }
@@ -60,13 +58,11 @@ async function review(
     agent: Agent,
     exec: ToolExecution,
     signal: AbortSignal,
-    shown: ShownSchemas,
     deps?: ReviewDeps,
 ): Promise<ReviewVerdict> {
     const config = getReviewConfig()
     const cwd = await ctx.workingDirectory.ensure(agent, signal)
-    const snapshot = snapshotAutoReview(agent, exec, cwd, shown)
-    shown.set(snapshot.pending.key, snapshot.pending.schema)
+    const snapshot = snapshotAutoReview(agent, exec, cwd)
     // 本地预检：参数明显不符合契约时直接放行，让工具自身报错。
     const issues = validateArgs(exec.arguments, snapshot.pending.schema.parameters)
     if (issues.length > 0) {
