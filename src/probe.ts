@@ -13,7 +13,7 @@ import { baseURLProblem, CREDENTIAL_REF, REVIEW_TIMEOUT_MS, TEST_ROUTE, parseAut
 import { byteLength } from './shared/bytes.ts'
 import { isRecord } from './shared/tools.ts'
 import { budgetState, historyBytes, observe, resetBudget, restoreBudget } from './budget.ts'
-import { postDecisionWithRetry, SystemOneCallError } from './systemone-client.ts'
+import { FAILURE, postDecisionWithRetry, SystemOneCallError } from './systemone-client.ts'
 import type { SystemOneRequest } from './systemone.ts'
 
 /** 连通性测试的结果；成功不回细节。 */
@@ -81,6 +81,14 @@ function messageOf(error: unknown): ProbeResult {
     return { ok: false, code: 'probeFailed' }
 }
 
+function doubleFailureOf(error: unknown): ProbeResult {
+    if (error instanceof SystemOneCallError) {
+        if (error.status === 429) return { ok: false, code: 'rateLimited' }
+        if (error.kind === FAILURE.timeout || error.kind === FAILURE.network) return { ok: false, code: 'networkFailed' }
+    }
+    return { ok: false, code: 'unknownFailure' }
+}
+
 /** 解析凭据；未配置返回 undefined。 */
 async function resolveKey(ctx: Context): Promise<string | undefined> {
     const credential = await ctx.credentials.resolve(credentialRef(CREDENTIAL_REF))
@@ -116,7 +124,12 @@ async function resolveCall(ctx: Context, body: ProbePayload): Promise<ProbeCall 
 }
 
 /** 单发测试：发一次决策请求并回「通过 / 原因」；`body` 缺省发最小请求。 */
-async function singleProbe(call: ProbeCall, signal: AbortSignal, body?: SystemOneRequest): Promise<ProbeResult> {
+async function singleProbe(
+    call: ProbeCall,
+    signal: AbortSignal,
+    body?: SystemOneRequest,
+    failOf: (error: unknown) => ProbeResult = messageOf,
+): Promise<ProbeResult> {
     const metrics = { bodyBytes: 0 }
     const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
     try {
@@ -127,7 +140,7 @@ async function singleProbe(call: ProbeCall, signal: AbortSignal, body?: SystemOn
         }, 0)
         return { ok: true, inputTokens: response.usage?.input_tokens, bodyBytes: metrics.bodyBytes }
     } catch (error: unknown) {
-        return messageOf(error)
+        return failOf(error)
     }
 }
 
@@ -165,8 +178,8 @@ async function doubleProbe(body: ProbePayload, call: ProbeCall, signal: AbortSig
         if (inputTokens === undefined || !Number.isFinite(inputTokens)) return { ok: true }
 
         observe(signature, first.bodyBytes ?? 0, inputTokens)
-        const second = await singleProbe(call, signal, paddedRequest(historyBytes(signature, contextTokens, fixed)))
-        if (second.ok === false) return { ok: false, code: 'contextInsufficient' }
+        const second = await singleProbe(call, signal, paddedRequest(historyBytes(signature, contextTokens, fixed)), doubleFailureOf)
+        if (second.ok === false) return second
         return { ok: true }
     } finally {
         restoreBudget(stash)

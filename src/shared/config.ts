@@ -38,7 +38,9 @@ export type ProbeFailureCode =
     | 'baseURLInvalid'
     | 'credentialMissing'
     | 'authHeaderInvalid'
-    | 'contextInsufficient'
+    | 'rateLimited'
+    | 'networkFailed'
+    | 'unknownFailure'
     | 'invalidResponse'
     | 'probeFailed'
 

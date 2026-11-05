@@ -99,7 +99,9 @@ const PROBE_CODES: ReadonlySet<string> = new Set<ProbeFailureCode>([
     'baseURLInvalid',
     'credentialMissing',
     'authHeaderInvalid',
-    'contextInsufficient',
+    'rateLimited',
+    'networkFailed',
+    'unknownFailure',
     'invalidResponse',
     'probeFailed',
 ])

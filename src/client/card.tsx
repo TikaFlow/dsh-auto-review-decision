@@ -24,7 +24,9 @@ const PROBE_LABELS: Readonly<Record<ProbeFailureCode, CardLocaleKey>> = {
     baseURLInvalid: 'probeBaseURLInvalid',
     credentialMissing: 'probeCredentialMissing',
     authHeaderInvalid: 'probeAuthHeaderInvalid',
-    contextInsufficient: 'probeContextInsufficient',
+    rateLimited: 'probeRateLimited',
+    networkFailed: 'probeNetworkFailed',
+    unknownFailure: 'probeUnknownFailure',
     invalidResponse: 'probeInvalidResponse',
     probeFailed: 'probeFailed',
 }
