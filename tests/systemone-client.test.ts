@@ -130,8 +130,14 @@ test('模型为空时不发送该字段', async () => {
     assert.deepEqual(Object.keys(JSON.parse(String(calls[0]?.init.body))), ['state', 'questions'])
 })
 
-test('凭据缺失', async () => {
-    await rejectsKind(() => postDecisionWithRetry(request(), { ...BASE, apiKey: '' }), FAILURE.config)
+test('空密钥以 public 占位发出', async () => {
+    calls.length = 0
+    await postDecisionWithRetry(request(), {
+        ...BASE,
+        apiKey: '',
+        fetchImpl: spy(() => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))),
+    })
+    assert.equal((calls[0]?.init.headers as Headers).get('Authorization'), 'Bearer public')
 })
 
 test('非 200 带摘要', async () => {
@@ -297,7 +303,7 @@ test('响应校验可单独调用', () => {
 
 test('每类失败的消息指明需修正的配置项', () => {
     const cases: ReadonlyArray<readonly [SystemOneFailureKind, string]> = [
-        [FAILURE.config, 'API 密钥'],
+        [FAILURE.config, 'API 地址'],
         [FAILURE.timeout, 'API 地址'],
         [FAILURE.network, 'API 地址'],
         [FAILURE.status, 'API 地址'],

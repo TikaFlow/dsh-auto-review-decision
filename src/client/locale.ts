@@ -27,7 +27,7 @@ const en = {
     confidenceThreshold: 'Confidence threshold',
     confidenceThresholdHint: 'Higher is more conservative. 0.6–0.99.',
     toolWhitelist: 'Tool whitelist',
-    toolWhitelistHint: 'Excluded {count} tool(s), these tools will be automatically allowed.',
+    toolWhitelistHint: 'Excluding {count} tool(s), these tools will be automatically allowed.',
     judgement: 'Judgement',
     fallback: 'Fallback',
     advanced: 'Advanced',
@@ -48,7 +48,6 @@ const en = {
     testHint: 'Sends one minimal request with the settings above.',
     testPassed: 'Connected.',
     probeBaseURLInvalid: 'API address is missing or invalid; check "API address".',
-    probeCredentialMissing: 'API key is not configured; check "API key".',
     probeAuthHeaderInvalid: 'Auth header is invalid; check "Custom auth header".',
     probeRateLimited: 'Rate limited; please try again later.',
     probeNetworkFailed: 'Network error; please try again later.',
@@ -121,8 +120,7 @@ const en = {
     overridden: 'Overridden',
     reset: 'Reset',
     invalidNumber: 'Enter a number in range.',
-    invalidURL: 'Enter an http(s) URL without /systemone.',
-    invalidURLFull: 'Enter a complete http(s) URL.',
+    invalidURL: 'Enter a http(s) URL.',
 }
 
 /** 中文文案。 */
@@ -146,7 +144,7 @@ const zh = {
     confidenceThreshold: '置信度阈值',
     confidenceThresholdHint: '越高越保守，取值 0.6–0.99。',
     toolWhitelist: '工具白名单',
-    toolWhitelistHint: '已排除 {count} 个工具，这些工具将自动允许调用。',
+    toolWhitelistHint: '排除 {count} 个工具，这些工具将自动允许调用。',
     judgement: '判定',
     fallback: '降级',
     advanced: '高级配置',
@@ -167,7 +165,6 @@ const zh = {
     testHint: '用上面的配置发一次最小请求。',
     testPassed: '连接成功。',
     probeBaseURLInvalid: 'API 地址未填写或不合法；请检查「API 地址」。',
-    probeCredentialMissing: '凭据未配置；请检查「API 密钥」。',
     probeAuthHeaderInvalid: '认证头不合法；请检查「自定义认证头」。',
     probeRateLimited: '触发限流，请稍后重试。',
     probeNetworkFailed: '网络错误，请稍后重试。',
@@ -240,8 +237,7 @@ const zh = {
     overridden: '已覆盖',
     reset: '重置',
     invalidNumber: '请输入范围内的数字。',
-    invalidURL: '请输入不含 /systemone 的 http(s) 地址。',
-    invalidURLFull: '请输入完整的 http(s) 地址。',
+    invalidURL: '请输入 http(s) 地址。',
 } satisfies typeof en
 
 /** 文案表。 */

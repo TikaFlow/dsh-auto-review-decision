@@ -22,7 +22,6 @@ const {
 /** 插件侧失败码 → 文案键。 */
 const PROBE_LABELS: Readonly<Record<ProbeFailureCode, CardLocaleKey>> = {
     baseURLInvalid: 'probeBaseURLInvalid',
-    credentialMissing: 'probeCredentialMissing',
     authHeaderInvalid: 'probeAuthHeaderInvalid',
     rateLimited: 'probeRateLimited',
     networkFailed: 'probeNetworkFailed',

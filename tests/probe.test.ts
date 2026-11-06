@@ -154,17 +154,18 @@ test('载荷非对象或空对象归为基址无效', async () => {
 })
 
 test('非法基址归为基址无效', async () => {
-    for (const baseURL of ['ftp://review.test', 'https://review.test?x=1', 'not-a-url']) {
+    for (const baseURL of ['ftp://review.test', 'not-a-url', '']) {
         const { result, calls } = await fire([], { payload: { ...PAYLOAD, baseURL } })
         assert.deepEqual(result, { ok: false, code: 'baseURLInvalid' })
         assert.equal(calls.length, 0, '校验未通过不应发出决策请求')
     }
 })
 
-test('缺 key 且凭据未配置归为凭据缺失', async () => {
-    const { result, calls } = await fire([], { payload: { ...PAYLOAD, apiKey: '' } })
-    assert.deepEqual(result, { ok: false, code: 'credentialMissing' })
-    assert.equal(calls.length, 0, '凭据缺失不应发出决策请求')
+test('缺 key 且凭据未配置时仍发请求，以 public 占位', async () => {
+    const { result, calls } = await fire([], { payload: { ...PAYLOAD, apiKey: '', contextTokens: undefined } })
+    assert.ok(isPassed(result))
+    assert.equal(calls.length, 1, '无凭据也应发出决策请求')
+    assert.equal((calls[0]?.headers as Headers).get('Authorization'), 'Bearer public')
 })
 
 test('缺 key 时改用已保存凭据发请求', async () => {

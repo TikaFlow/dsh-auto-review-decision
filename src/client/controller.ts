@@ -102,7 +102,6 @@ async function probeEndpoint(probe: EndpointProbe, signal: AbortSignal): Promise
 /** 宿主可能回传的插件侧失败码集合。 */
 const PROBE_CODES: ReadonlySet<string> = new Set<ProbeFailureCode>([
     'baseURLInvalid',
-    'credentialMissing',
     'authHeaderInvalid',
     'rateLimited',
     'networkFailed',
@@ -231,7 +230,7 @@ export interface CardState extends SettingsFormShell {
     readonly apiKeyConfigured: boolean
     /** 宿主凭据是否可写。 */
     readonly apiKeyWritable: boolean
-    /** 三个必填值（基址、模型、密钥）是否齐备，含草稿。 */
+    /** 基址是否已填写且为合法 http(s) URL。 */
     readonly testable: boolean
     /** 单发测试的状态。 */
     readonly test: TestState
@@ -337,7 +336,7 @@ export class CardController {
             apiKeyConfigured: this.credential.configured,
             apiKeyWritable: this.credential.writable,
             testable: baseURL.text.trim() !== ''
-                && (apiKey.text.trim() !== '' || this.credential.configured),
+                && baseURLProblem(baseURL.text.trim()) === undefined,
             test: this.single,
             testDouble: this.double,
             lastTest: this.lastTest,

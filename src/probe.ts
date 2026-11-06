@@ -113,17 +113,14 @@ interface ProbeCall {
 }
 
 /**
- * 校验草稿并解析出调用参数；密钥留空时改用已保存凭据。
+ * 校验草稿并解析出调用参数；密钥留空时改用已保存凭据，仍为空则以 `public` 占位发送。
  * @returns 调用参数，或校验失败的结果（以 `ok` 字段区分）。
  */
 async function resolveCall(ctx: Context, body: ProbePayload): Promise<ProbeCall | ProbeResult> {
     if (body.baseURL === '' || baseURLProblem(body.baseURL) !== undefined) {
         return { ok: false, code: 'baseURLInvalid' }
     }
-    const apiKey = body.apiKey || await resolveKey(ctx)
-    if (apiKey === undefined || apiKey === '') {
-        return { ok: false, code: 'credentialMissing' }
-    }
+    const apiKey = body.apiKey || await resolveKey(ctx) || ''
     const authHeader = parseAuthHeader(body.authHeader)
     if (authHeader === undefined) {
         return { ok: false, code: 'authHeaderInvalid' }

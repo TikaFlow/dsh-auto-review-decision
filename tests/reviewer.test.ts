@@ -421,19 +421,12 @@ configTest('网络失败归类为 network，错误信息不含密钥', async () 
     )
 })
 
-configTest('凭据未配置时归类为 config 失败且不发请求', async () => {
+configTest('无凭据时仍发起请求，以 public 占位', async () => {
     const { session, exec } = makeReviewSession()
-    const { calls, fetch } = capturingFetch(() => { throw new Error('must not be called') })
-    await assert.rejects(
-        decide(makeCtx(undefined), makeAgent(session), exec, exec.signal, { fetchImpl: fetch }),
-        (error: unknown) => {
-            assert.ok(error instanceof SystemOneCallError)
-            assert.equal(error.kind, FAILURE.config)
-            assert.ok(error.message.includes('凭据未配置'))
-            return true
-        },
-    )
-    assert.equal(calls.length, 0)
+    const { calls, fetch } = capturingFetch(() => okResponse(answersWith(1)))
+    await decide(makeCtx(undefined), makeAgent(session), exec, exec.signal, { fetchImpl: fetch })
+    assert.equal(calls.length, 1)
+    assert.equal((calls[0]?.init.headers as Headers).get('Authorization'), 'Bearer public')
 })
 
 configTest('必填配置缺失时归类为 config 失败', async () => {

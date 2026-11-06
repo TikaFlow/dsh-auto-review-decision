@@ -81,10 +81,6 @@ async function review(
         throw new SystemOneCallError(FAILURE.config, `配置未完成（${config.missing.join('、')}）`)
     }
     const credential = await ctx.credentials.resolve(credentialRef(CREDENTIAL_REF))
-    if (credential === undefined || credential.value === '') {
-        updateState('configError')
-        throw new SystemOneCallError(FAILURE.config, '凭据未配置')
-    }
     // 此审查请求只发往决策端点，永不进入会话日志。
     // history 只承载文本事实：非文本块（图片、附件等）降为占位说明。
     const projected = snapshot.history.map(entry => {
@@ -124,7 +120,7 @@ async function review(
             fullURL: config.values.fullURL,
             authHeader: config.values.authHeader,
             model: config.values.model,
-            apiKey: credential.value,
+            apiKey: credential?.value ?? '',
             signal,
             fetchImpl: deps?.fetchImpl,
             metrics,

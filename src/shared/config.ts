@@ -36,7 +36,6 @@ export const STATS_URL = STATS_ROUTE.slice(1)
 /** 连通性测试的插件侧失败码：卡片按码取词典文案。 */
 export type ProbeFailureCode =
     | 'baseURLInvalid'
-    | 'credentialMissing'
     | 'authHeaderInvalid'
     | 'rateLimited'
     | 'networkFailed'

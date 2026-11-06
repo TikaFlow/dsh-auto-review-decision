@@ -19,7 +19,7 @@ import type {
 
 /** 一次调用失败的归类：取值即机器可读的类别，修正项由 {@link FAILURE_FIX} 给出。 */
 export const FAILURE = {
-    /** 配置不完整：地址缺失或凭据未配置。 */
+    /** 配置不完整：地址缺失。 */
     config: 'config',
     /** 请求超时。 */
     timeout: 'timeout',
@@ -42,7 +42,7 @@ export type SystemOneFailureKind = (typeof FAILURE)[keyof typeof FAILURE]
 
 /** 每类失败对应需要修正的配置项。 */
 export const FAILURE_FIX: Readonly<Record<SystemOneFailureKind, string>> = {
-    config: 'API 地址、API 密钥',
+    config: 'API 地址',
     timeout: 'API 地址',
     aborted: '',
     network: 'API 地址',
@@ -79,6 +79,9 @@ const MAX_DETAIL = 200
 /** 429 重试尝试的超时（毫秒）：端点已证明可达，按推理时长的容忍度而非网络不可达的 30 秒。 */
 const RETRY_TIMEOUT_MS = 10_000
 
+/** 未配置密钥时的占位 token。 */
+const PLACEHOLDER_TOKEN = 'public'
+
 /** 调用一次决策接口所需的参数。 */
 export interface DecisionCallOptions {
     /** 已校验的端点基址。 */
@@ -89,7 +92,7 @@ export interface DecisionCallOptions {
     readonly authHeader: string
     /** 决策模型标识；留空则不发送该字段。 */
     readonly model: string
-    /** 凭据解析得到的密钥。 */
+    /** 凭据解析得到的密钥；空串时使用占位 token。 */
     readonly apiKey: string
     /** 调用方生命周期；中止即在途中断。 */
     readonly signal: AbortSignal
@@ -292,17 +295,13 @@ async function attemptDecision(
  * @param options - 端点、模型、密钥、生命周期与注入点。
  * @param retries - 429 的重试次数；0 表示不重试（探活路径使用）。
  * @returns 已校验的响应体。
- * @throws {SystemOneCallError} 凭据缺失、超时、中止、网络失败、非 200、解析失败、字段缺失或取值越界。
+ * @throws {SystemOneCallError} 超时、中止、网络失败、非 200、解析失败、字段缺失或取值越界。
  */
 export async function postDecisionWithRetry(
     request: SystemOneRequest | string,
     options: DecisionCallOptions,
     retries: number = 5,
 ): Promise<SystemOneResponse> {
-    if (options.apiKey === '') {
-        updateState('configError')
-        throw new SystemOneCallError(FAILURE.config, '凭据未配置')
-    }
     let serialized: string
     if (typeof request === 'string') {
         serialized = request
@@ -318,7 +317,7 @@ export async function postDecisionWithRetry(
 
     const headers = new Headers({
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${options.apiKey}`
+        'Authorization': `Bearer ${options.apiKey === '' ? PLACEHOLDER_TOKEN : options.apiKey}`
     })
     const replace = options.authHeader.startsWith('!')
     const name = replace ? options.authHeader.slice(1) : options.authHeader

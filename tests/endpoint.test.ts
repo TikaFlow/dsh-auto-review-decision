@@ -21,11 +21,19 @@ test('路径是否含 /systemone 不参与校验', () => {
     assert.equal(baseURLProblem('https://example.com/v1'), undefined)
 })
 
-test('拒绝查询串、片段与非法协议', () => {
-    assert.ok(baseURLProblem('https://example.com/v1?x=1') !== undefined)
-    assert.ok(baseURLProblem('https://example.com/v1#a') !== undefined)
-    assert.ok(baseURLProblem('ftp://example.com/v1') !== undefined)
-    assert.ok(baseURLProblem('not-a-url') !== undefined)
+test('只要求 http 或 https 协议，路径与端口合法', () => {
+    for (const value of [
+        'http://example.com',
+        'https://example.com',
+        'https://example.com/v1/chat',
+        'https://example.com:8443/v1',
+    ]) assert.equal(baseURLProblem(value), undefined)
+})
+
+test('拒绝非 http(s) 协议与无法解析的串', () => {
+    for (const value of ['ftp://example.com/v1', 'example.com/v1', 'not-a-url', 'http://']) {
+        assert.ok(baseURLProblem(value) !== undefined)
+    }
 })
 
 test('空串视为未配置而非非法', () => {
