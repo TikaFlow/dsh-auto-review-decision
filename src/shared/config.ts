@@ -200,8 +200,7 @@ const TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u
 
 /**
  * 归一并校验「认证头」草稿：整体 trim → 全角 `！` 视同 `!` → 剥前缀 → 再 trim。
- * 若命中已有头，如 authorization，则发送侧静默删除。
-*
+ *
  * @param text - 原始草稿。
  * @returns 归一后的取值（保留 `!` 前缀）；空串表示未配置；头名非法或只填 `!` 时 undefined。
  */

@@ -94,10 +94,9 @@ test('替换模式：不发 Bearer，只发自定义头', async () => {
     assert.deepEqual([...headers.keys()], ['content-type', 'x-api-key'])
 })
 
-test('替换 authorization：删后重设为裸凭据值', async () => {
+test('头名已存在时无操作：!Authorization 保留预置的 Bearer', async () => {
     const headers = await sentHeaders('!Authorization')
-    assert.equal(headers.get('Authorization'), 'sk-test')
-    assert.ok(!headers.get('Authorization')?.startsWith('Bearer'))
+    assert.equal(headers.get('Authorization'), 'Bearer sk-test')
 })
 
 test('追加模式同名头静默跳过：不覆盖已设的 Bearer', async () => {
@@ -110,6 +109,13 @@ test('内置头不被覆盖：Content-Type 保持原值', async () => {
     assert.equal(appended.get('Authorization'), 'Bearer sk-test')
     assert.equal(appended.get('Content-Type'), 'application/json')
     const replaced = await sentHeaders('!Content-Type')
-    assert.equal(replaced.get('Authorization'), null)
+    assert.equal(replaced.get('Authorization'), 'Bearer sk-test')
     assert.equal(replaced.get('Content-Type'), 'application/json')
+})
+
+test('替换模式下头名已存在时不动请求头', async () => {
+    const headers = await sentHeaders('!Content-Type')
+    assert.deepEqual([...headers.keys()].sort(), ['authorization', 'content-type'])
+    assert.equal(headers.get('Authorization'), 'Bearer sk-test')
+    assert.equal(headers.get('Content-Type'), 'application/json')
 })

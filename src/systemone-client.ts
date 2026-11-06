@@ -309,12 +309,18 @@ export async function postDecisionWithRetry(
     const bodyBytes = byteLength(serialized)
     if (options.metrics !== undefined) options.metrics.bodyBytes = bodyBytes
 
-    const headers = new Headers({ 'Content-Type': 'application/json' })
+    const headers = new Headers({
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${options.apiKey}`
+    })
     const replace = options.authHeader.startsWith('!')
     const name = replace ? options.authHeader.slice(1) : options.authHeader
-    if (replace) headers.delete('Authorization')
-    else headers.set('Authorization', `Bearer ${options.apiKey}`)
-    if (name !== '' && !headers.has(name)) headers.set(name, options.apiKey)
+    if (name !== '' && !headers.has(name)) {
+        headers.set(name, options.apiKey)
+        if (replace) {
+            headers.delete('Authorization')
+        }
+    }
 
     const ctx: AttemptContext = { serialized, fetchImpl: options.fetchImpl ?? fetch, headers }
     let delay = 1000
