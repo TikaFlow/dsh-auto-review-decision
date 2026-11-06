@@ -13,7 +13,7 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { FALLBACK_FAILURE_THRESHOLD } from '../src/shared/config.ts'
 import { CREDENTIAL_REF, MIN_CONTEXT_TOKENS } from '../src/shared/config.ts'
 import { byteLength } from '../src/shared/bytes.ts'
-import { budgetState, historyBytes, resetBudget } from '../src/budget.ts'
+import { budgetState, historyBytes } from '../src/budget.ts'
 import { setConfigInput } from '../src/config.ts'
 import { decide } from '../src/reviewer.ts'
 import { FAILURE, SystemOneCallError } from '../src/systemone-client.ts'
@@ -49,13 +49,18 @@ let configValues: Record<string, unknown> = {
 
 /**
  * 单进程合跑时模块级配置会跨文件串扰：每条用例运行前挂载本文件配置、结束后还原，
- * 使环境配置在用例之间回到未设置状态。
+ * 使环境配置在用例之间回到未设置状态；传入 model 时该用例使用独立的预算签名。
  */
-const configTest = (name: string, fn: () => unknown): void => {
+const configTest = (name: string, fn: () => unknown, model?: string): void => {
     test(name, async () => {
         setConfigInput(() => configValues)
+        const savedModel = configValues.model
+        if (model !== undefined) configValues.model = model
         installFallback()
-        try { await fn() } finally { setConfigInput(() => undefined) }
+        try { await fn() } finally {
+            configValues.model = savedModel
+            setConfigInput(() => undefined)
+        }
     })
 }
 
@@ -289,7 +294,6 @@ configTest('history 依次携带用户指令、模型说明与历史调用，且
 })
 
 configTest('长会话裁剪后待审 schema 仍随 pending 发出，历史不携带 schema', async () => {
-    resetBudget()
     const saved = configValues.contextTokens
     configValues.contextTokens = MIN_CONTEXT_TOKENS
     try {
@@ -319,7 +323,7 @@ configTest('长会话裁剪后待审 schema 仍随 pending 发出，历史不携
     } finally {
         configValues.contextTokens = saved
     }
-})
+}, 'review-model-budget-trim')
 
 configTest('全部问题通过判定线时结论为 allow', async () => {
     const { session, exec } = makeReviewSession()
@@ -651,12 +655,12 @@ configTest('apply 重置统计后连续失败计数与降级标记归零', () =>
     assert.deepEqual(second.presetCalls, [])
 })
 
-/** 审查预算签名：与 reviewer 内部的拼接方式一致。 */
-const BUDGET_SIGNATURE = 'http://review.test|false|review-model'
+/** 预算用例各用独立模型名，使审查签名互不相同。 */
+const BUDGET_MODEL_FALLBACK = 'review-model-budget-fallback'
+const BUDGET_SIGNATURE = `http://review.test|false|${BUDGET_MODEL_FALLBACK}`
 const BUDGET_CONTEXT_TOKENS = 24 * 1024
 
 configTest('非 200/429 响应每次失败后回退因子，下一次审查预算随之收紧', async () => {
-    resetBudget()
     const { session, exec } = makeReviewSession()
     for (const expected of [2.25, 2]) {
         await assert.rejects(
@@ -671,10 +675,9 @@ configTest('非 200/429 响应每次失败后回退因子，下一次审查预�
     }
     const hardTokens = BUDGET_CONTEXT_TOKENS - Math.max(BUDGET_CONTEXT_TOKENS * 0.05, 1024)
     assert.equal(historyBytes(BUDGET_SIGNATURE, BUDGET_CONTEXT_TOKENS, 0), Math.floor(hardTokens * 2))
-})
+}, BUDGET_MODEL_FALLBACK)
 
 configTest('端点拒绝逐次计入因子回退，因子到下限后仍计；429 不计', async () => {
-    resetBudget()
     const { session, exec } = makeReviewSession()
     installFallback()
     const rejected = (): Response => new Response(JSON.stringify({ error: 'context length exceeded' }), { status: 400 })
@@ -689,10 +692,9 @@ configTest('端点拒绝逐次计入因子回退，因子到下限后仍计；42
     await reviewRateLimited(session, exec)
     assert.equal(reviewStats().factorFallbacks, before)
     assert.equal(budgetState()?.factor, 1.25)
-})
+}, 'review-model-budget-attempts')
 
 configTest('网络错误、超时、200 解析与字段失败都不回退因子', async () => {
-    resetBudget()
     const { session, exec } = makeReviewSession()
     const failures: Array<() => Response> = [
         () => { throw new TypeError('fetch failed') },
@@ -711,10 +713,9 @@ configTest('网络错误、超时、200 解析与字段失败都不回退因子'
         assert.equal(budgetState()?.totalBytes, 0)
         assert.equal(budgetState()?.totalTokens, 0)
     }
-})
+}, 'review-model-budget-failures')
 
 configTest('成功响应仍按 usage 观测校准因子', async () => {
-    resetBudget()
     const { session, exec } = makeReviewSession()
     const { verdict, calls } = await reviewOnce(session, exec, () => okResponse({
         ...answersWith(1),
@@ -724,4 +725,4 @@ configTest('成功响应仍按 usage 观测校准因子', async () => {
     const bodyBytes = byteLength(String(calls[0]!.init.body))
     assert.equal(budgetState()?.totalBytes, bodyBytes)
     assert.equal(budgetState()?.factor, bodyBytes / 500)
-})
+}, 'review-model-budget-success')

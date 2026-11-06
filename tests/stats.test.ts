@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
-import { observe, resetBudget } from '../src/budget.ts'
+import { observe } from '../src/budget.ts'
 import { applyFallback, resetFallbackState, reviewStats, updateState } from '../src/stats.ts'
 import { FALLBACK_FAILURE_THRESHOLD } from '../src/shared/config.ts'
 import {
@@ -10,10 +10,10 @@ import {
     parseStats,
 } from '../src/shared/stats.ts'
 
-/** 与 reviewer 内部的签名拼接方式一致，用于校准当前因子。 */
-const SIGNATURE = 'http://review.test|false|review-model'
+/** 校准当前因子用的观测签名；独立于其他用例的签名，账本互不干扰。 */
+const SIGNATURE = 'http://review.test|false|stats-model'
 
-/** 复位统计与预算账本：applyFallback 是唯一的统计安装入口，换一个新的宿主上下文即归零。 */
+/** 复位统计：applyFallback 是唯一的统计安装入口，换一个新的宿主上下文即归零。 */
 function reset(): void {
     const ctx = new Context()
     ctx.provide('sessions', { list: () => [] as unknown[] })
@@ -23,7 +23,6 @@ function reset(): void {
         get defaultPreset(): string { return 'read-only' },
     })
     applyFallback(ctx)
-    resetBudget()
 }
 
 /** 连续记若干次失败的尝试：每个 attempt 都带一个 failed 结局。 */

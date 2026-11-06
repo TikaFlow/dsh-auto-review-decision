@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
-import { budgetState, historyBytes, observe, resetBudget } from '../src/budget.ts'
+import { budgetState, historyBytes, observe } from '../src/budget.ts'
 import { installProbeRoute } from '../src/probe.ts'
 import { CLIENT_TIMEOUT_MS, MAX_CONTEXT_TOKENS, MIN_CONTEXT_TOKENS, PROBE_TIMEOUT_MS, TEST_ROUTE } from '../src/shared/config.ts'
 
@@ -247,12 +247,11 @@ test('客户端等待窗口等于探活两次尝试的 15 秒', () => {
     assert.equal(CLIENT_TIMEOUT_MS, PROBE_TIMEOUT_MS * 2)
 })
 
-/** 与探活路径一致的观测签名：端点与模型标识的组合。 */
+/** 账本观测签名：沿用载荷中的端点与模型组合，与其他用例的签名互不相同。 */
 const PROBE_SIGNATURE = `${PAYLOAD.baseURL}|${String(PAYLOAD.fullURL)}|${PAYLOAD.model}`
 
 /** 把账本校准到 4 字节/token，作为探活前后的对照。 */
 function seedBudget(): void {
-    resetBudget()
     observe(PROBE_SIGNATURE, 4000, 1000)
 }
 

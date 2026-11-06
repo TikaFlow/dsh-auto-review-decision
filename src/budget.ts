@@ -102,11 +102,6 @@ export function fallbackFactor(signature: string, status: number): number | unde
     return current.factor
 }
 
-/** 清空账本，下一次调用重新从初始因子开始。 */
-export function resetBudget(): void {
-    ledger = undefined
-}
-
 /** 当前账本的只读快照，供诊断与测试使用。 */
 export function budgetState(): {
     readonly signature: string
