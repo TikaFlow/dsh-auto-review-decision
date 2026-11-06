@@ -6,6 +6,9 @@
 
 import { byteLength } from './shared/bytes.ts'
 
+/** state 外壳与 history 数组括号的固定字节数。 */
+const FIXED_STATE_OVERHEAD_BYTES = 50
+
 /** 与 history 并列计入 state、且无法裁剪的固定部分。 */
 export interface FixedStateParts {
     /** 环境，通常只有 cwd。 */
@@ -20,7 +23,7 @@ export interface FixedStateParts {
 
 /** 固定部分的一次序列化结果：字节数与请求体文本同源。 */
 export interface SerializedFixedState {
-    /** environment、policy、pending 与全部 questions 的字节数合计。 */
+    /** environment、policy、pending、全部 questions 与固定外壳的字节数合计。 */
     readonly bytes: number
     /** `state.environment` 的 JSON 文本。 */
     readonly environment: string
@@ -35,9 +38,8 @@ export interface SerializedFixedState {
 /**
  * 序列化固定部分：每部分只序列化一次，字节数与请求体文本共用同一结果。
  *
- * 字节口径与逐部分 `byteLength(JSON.stringify(...))` 求和一致。
  * @param parts - 与 history 并列的固定部分。
- * @returns 各部分的 JSON 文本，以及按既有口径求得的固定开销字节数。
+ * @returns 各部分的 JSON 文本，以及含外壳的固定开销字节数。
  */
 export function serializeFixedState(parts: FixedStateParts): SerializedFixedState {
     const environment = JSON.stringify(parts.environment)
@@ -45,7 +47,8 @@ export function serializeFixedState(parts: FixedStateParts): SerializedFixedStat
     const pending = JSON.stringify(parts.pending)
     const questions = JSON.stringify(parts.questions)
     return {
-        bytes: byteLength(environment)
+        bytes: FIXED_STATE_OVERHEAD_BYTES
+            + byteLength(environment)
             + byteLength(policy)
             + byteLength(pending)
             + byteLength(questions),

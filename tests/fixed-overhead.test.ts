@@ -19,8 +19,10 @@ const PARTS = {
     },
 }
 
-test('固定开销等于 environment + policy + pending + 全部问题', () => {
-    const expected = byteLength(JSON.stringify(PARTS.environment))
+test('固定开销等于外壳 + environment + policy + pending + 全部问题', () => {
+    // state 外壳 48 与 history 空数组括号 2。
+    const expected = 50
+        + byteLength(JSON.stringify(PARTS.environment))
         + byteLength(JSON.stringify(PARTS.policy))
         + byteLength(JSON.stringify(PARTS.pending))
         + byteLength(JSON.stringify(PARTS.questions))
@@ -40,9 +42,10 @@ test('questions 按整份表计入，而非只计最长一个', () => {
     assert.ok(allSum > longest)
 })
 
-test('问题表为空时只余下空对象的两个字节', () => {
+test('问题表为空时只余下空对象与外壳的字节', () => {
     const empty = fixedBytes({ ...PARTS, questions: {} })
-    const expected = byteLength(JSON.stringify(PARTS.environment))
+    const expected = 50
+        + byteLength(JSON.stringify(PARTS.environment))
         + byteLength(JSON.stringify(PARTS.policy))
         + byteLength(JSON.stringify(PARTS.pending))
         + byteLength(JSON.stringify({}))

@@ -92,7 +92,8 @@ test('已序列化请求体原样发送，与对象路径逐字节一致', async
     assert.equal(String(calls[0]?.init.body), serialized)
     assert.equal(String(calls[1]?.init.body), serialized)
     assert.equal(objectMetrics.bodyBytes, stringMetrics.bodyBytes)
-    assert.equal(stringMetrics.bodyBytes, byteLength(serialized))
+    // 上报的字节数等于实际发送的请求体字节。
+    assert.equal(stringMetrics.bodyBytes, byteLength(String(calls[1]?.init.body)))
 })
 
 test('基址尾部斜杠不产生重复斜杠', async () => {
