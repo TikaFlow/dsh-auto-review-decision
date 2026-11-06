@@ -8,12 +8,40 @@ test('默认追加 /systemone', () => {
 
 test('完整 URL 不追加路径', () => {
     assert.equal(decisionEndpoint('https://example.com/v1/systemone', true), 'https://example.com/v1/systemone')
+    assert.equal(decisionEndpoint('https://example.com/v1', true), 'https://example.com/v1')
 })
 
 test('末尾斜杠一律去除', () => {
     assert.equal(decisionEndpoint('https://example.com/v1/', false), 'https://example.com/v1/systemone')
     assert.equal(decisionEndpoint('https://example.com/v1///', false), 'https://example.com/v1/systemone')
     assert.equal(decisionEndpoint('https://example.com/v1/systemone/', true), 'https://example.com/v1/systemone')
+})
+
+test('已以 /systemone 结尾时不再追加，与完整 URL 开关无关', () => {
+    for (const fullURL of [false, true]) {
+        assert.equal(decisionEndpoint('https://example.com/v1/systemone', fullURL), 'https://example.com/v1/systemone')
+        assert.equal(decisionEndpoint('https://example.com/systemone/', fullURL), 'https://example.com/systemone')
+        assert.equal(decisionEndpoint('https://example.com/systemone///', fullURL), 'https://example.com/systemone')
+    }
+})
+
+test('仅在 /systemone 为完整尾段时免追加', () => {
+    assert.equal(decisionEndpoint('https://example.com/v1/systemones', false), 'https://example.com/v1/systemones/systemone')
+    assert.equal(decisionEndpoint('https://example.com/v1/xsystemone', false), 'https://example.com/v1/xsystemone/systemone')
+    assert.equal(decisionEndpoint('https://example.com/systemone/v1', false), 'https://example.com/systemone/v1/systemone')
+})
+
+test('追加一次且不产生双斜杠', () => {
+    assert.equal(decisionEndpoint('https://example.com', false), 'https://example.com/systemone')
+    assert.equal(decisionEndpoint('https://example.com/', false), 'https://example.com/systemone')
+})
+
+test('查询串与片段被基址校验拒绝', () => {
+    for (const value of [
+        'https://example.com/v1?q=/systemone',
+        'https://example.com/v1#/systemone',
+        'https://example.com/v1?q=1',
+    ]) assert.ok(baseURLProblem(value) !== undefined)
 })
 
 test('路径是否含 /systemone 不参与校验', () => {

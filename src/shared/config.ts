@@ -105,7 +105,7 @@ export type PresetOption = (typeof PRESET_OPTIONS)[number]
 
 /** 解析后的审查配置。 */
 export interface ReviewConfig {
-    /** 端点基址，不含 `/systemone`。 */
+    /** 端点基址；已以 `/systemone` 结尾时不再追加。 */
     readonly baseURL: string
     /** 基址是否已含完整路径；为真时不追加 `/systemone`。 */
     readonly fullURL: boolean
@@ -167,7 +167,7 @@ export const CONFIG_LABELS: Readonly<Record<ConfigKey, string>> = {
  */
 export function decisionEndpoint(baseURL: string, fullURL: boolean): string {
     const trimmed = baseURL.replace(/\/+$/u, '')
-    return fullURL ? trimmed : `${trimmed}/systemone`
+    return fullURL || trimmed.endsWith('/systemone') ? trimmed : `${trimmed}/systemone`
 }
 
 /**
