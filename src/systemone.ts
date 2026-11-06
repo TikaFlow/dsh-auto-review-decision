@@ -1,7 +1,7 @@
 /**
  * SystemOne 决策接口的线协议类型。
  *
- * 本文件只声明外部 HTTP 契约，不含任何调用逻辑；接入实现就位前这些类型暂未被引用。
+ * 本文件只声明外部 HTTP 契约，不含任何调用逻辑。
  * 协议细节见 docs/systemone-protocol.md。
  *
  * @module dsh-auto-review-decision/systemone
@@ -71,7 +71,7 @@ export interface SystemOneRequest {
 
 /**
  * 是/否答案。
- * `noul` 即 P(真)，取值 0–1，0.5 表示无法判定；该类型不提供 confidence 字段。
+ * `noul` 即 P(真)，取值 0–1，0.5 表示无法判定。
  */
 export interface SystemOneNoulAnswer {
     readonly type: 'noul'

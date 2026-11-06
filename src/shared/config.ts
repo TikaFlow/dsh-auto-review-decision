@@ -73,7 +73,7 @@ export const MAX_CONFIDENCE_THRESHOLD = 0.99
 /** 审查单次决策请求尝试的超时（毫秒）。 */
 export const REVIEW_TIMEOUT_MS = 30_000
 
-/** 探活单次尝试的超时（毫秒）：最小固定请求，取审查窗口的一半。 */
+/** 探活单次尝试的超时（毫秒）：取审查窗口的一半。 */
 export const PROBE_TIMEOUT_MS = 15_000
 
 /** 浏览器半等待宿主路由的超时（毫秒）：单发与双发测试、统计读取一律 30s。 */
@@ -91,7 +91,7 @@ export const SAFE_LEVEL_START = 2
 /** 高安全档位的起点档位。 */
 export const HIGH_LEVEL_START = 3
 
-/** 明确安全档在安全侧中的最低占比。 */
+/** 明确安全档在安全侧中的占比须高于此值。 */
 export const MIN_HIGH_RATIO = 0.6
 
 /** 「去向」哨兵值，实时读取宿主的默认新会话预设。 */

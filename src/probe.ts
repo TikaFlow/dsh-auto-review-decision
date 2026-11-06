@@ -1,5 +1,5 @@
 /**
- * 连通性测试：按卡片草稿向决策端点发一次最小请求，只回「通过 / 原因」。
+ * 连通性测试：按卡片草稿测试请求，只回「通过 / 原因」。
  *
  * 走 `connection.fetch` 而非 `connection.rpc.handle`：后者求值 `owner.webServer`，
  * 而 connection 不声明 `webServer`。与审查分流：不入降级计数。

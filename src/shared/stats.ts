@@ -14,7 +14,7 @@ export interface ReviewStats {
     localReviews: number
     /** 模型审查次数：含配置错误。 */
     modelReviews: number
-    /** 配置或凭据错误导致零请求的次数。 */
+    /** 配置不完整导致零请求的次数。 */
     configErrors: number
     /** HTTP 尝试次数。 */
     requests: number

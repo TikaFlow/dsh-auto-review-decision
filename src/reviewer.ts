@@ -69,7 +69,6 @@ async function review(
         updateState('localReview')
         return { kind: 'allow' }
     }
-    // 白名单在本地预检之后生效：免审调用仍须通过参数校验。
     const exempt = await whitelistVerdict(ctx, exec, cwd, signal, new Set(config.values.toolWhitelist))
     if (exempt !== undefined) {
         updateState('localReview')

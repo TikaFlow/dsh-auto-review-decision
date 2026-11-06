@@ -30,8 +30,7 @@ export function denied(exec: ToolExecution, reason: LocalizedText): PreToolDecis
 }
 
 /**
- * 请求用户裁决一次审查者已拒绝的调用。审计理由为英文，
- * 提示文案本地化，并保留审查者的原始理由。
+ * 请求用户裁决调用。提示文案本地化，并保留审查者的原始理由。
  */
 export function askUser(exec: ToolExecution, reason?: LocalizedText): PreToolDecision {
     const denial = `Auto review denied tool "${exec.name}"`
@@ -42,7 +41,7 @@ export function askUser(exec: ToolExecution, reason?: LocalizedText): PreToolDec
     }
 }
 
-/** 把审查失败物化为独立错误，而非拒绝。 */
+/** 把审查失败物化为独立错误。 */
 export function failed(exec: ToolExecution, error: unknown): PreToolDecision {
     const message = error instanceof Error ? error.message : String(error)
     return {

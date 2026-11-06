@@ -1,5 +1,5 @@
 /**
- * 审查运行的运行期统计与降级。连续失败与降级标记：装载时/重选 Auto/配置更新重置。
+ * 审查运行的运行期统计与降级。
  *
  * @module dsh-auto-review-decision/stats
  */
