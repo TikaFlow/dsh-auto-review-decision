@@ -39,7 +39,7 @@ export function truncateHistory(entries: readonly HistoricalEntry[], budgetBytes
     const n = entries.length
     // 末十条与待审无条件保留
     const lastStart = Math.max(0, n - 1 - RECENT_KEEP)
-    const firstEnd = Math.min(HEAD_KEEP, n - 2)
+    const firstEnd = Math.min(HEAD_KEEP - 1, n - 2)
     const sizes: (number | undefined)[] = new Array<number | undefined>(n)
     const serialized: (string | undefined)[] = new Array<string | undefined>(n)
     // 三层出局顺序：中间非权威、中间权威、头部非权威；层内从旧到新。

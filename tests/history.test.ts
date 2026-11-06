@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { truncateHistory } from '../src/history.ts'
 import { byteLength } from '../src/shared/bytes.ts'
-import { RECENT_KEEP } from '../src/shared/config.ts'
+import { HEAD_KEEP, RECENT_KEEP } from '../src/shared/config.ts'
 import type { HistoricalEntry, ReviewSourceRole } from '../src/types.ts'
 
 /** 测试用的字节预算：取一个宽裕值，避免无关用例被裁剪干扰。 */
@@ -190,8 +190,8 @@ test('中间权威在中间非权威出尽后才出局，层内从旧到新', ()
         ...manyFacts(RECENT_KEEP + 1),
     ]
     const result = truncate(entries, 3750)
-    // 中间非权威全出局；中间权威小段整体出局。
-    assert.deepEqual(omittedCounts(result), [10])
+    // 中间非权威 6 条与中间权威 5 条全出局，合成一段 11 条占位；头部与末十条不动。
+    assert.deepEqual(omittedCounts(result), [11])
     assert.equal(result.filter(entry => entry.kind === 'user-message' && entry.role === 'constraint').length, 0)
 })
 
@@ -204,8 +204,8 @@ test('头部非权威是最后出局的层', () => {
         ...manyFacts(RECENT_KEEP + 1),
     ]
     const result = truncate(entries, 3000)
-    // 中间两层全出局后，头部非权威才从最旧起出局；头部权威与末十条不动。
-    assert.deepEqual(omittedCounts(result), [4, 15])
+    // 中间两层全出局（16 条）后，头部非权威才从最旧起再出局 3 条；头部权威与末十条不动。
+    assert.deepEqual(omittedCounts(result), [3, 16])
     assert.equal(label(result[0]!), 'user-message:user-instruction')
 })
 
@@ -234,8 +234,9 @@ test('缺口按连续段分别折叠，被保留条目隔开', () => {
         ...manyFacts(RECENT_KEEP + 1),
     ]
     const result = truncate(entries, 3900)
-    // 中间非权威出局三条，被保留的权威隔开，故有两处占位。
-    assert.deepEqual(omittedCounts(result), [1, 2])
+    // 中间非权威依次出局四条，被保留的两处权威隔成三段占位。
+    assert.deepEqual(omittedCounts(result), [1, 1, 2])
+    assert.equal(label(result[10]!), 'omitted:1')
     assert.equal(label(result[12]!), 'omitted:1')
     assert.equal(label(result[14]!), 'omitted:2')
 })
@@ -271,6 +272,27 @@ test('预算为零时只剩头部权威与末十条', () => {
 test('历史过短时末十覆盖全部，永不剪裁', () => {
     const entries = [user('user-instruction', 'task'), ...manyFacts(9)]
     assert.deepEqual(truncate(entries, 0), entries)
+})
+
+test('历史仅 1 至 3 条时头部判定不生效，预算为零也不裁剪', () => {
+    // n - 2 为负或 0 时上界退化为负，头部层必须为空且不影响末十的无条件保留。
+    for (const count of [1, 2, 3]) {
+        const entries = manyFacts(count)
+        assert.deepEqual(truncate(entries, 0), entries)
+    }
+})
+
+test('头部恰保留下标 0 至 9 共 10 条，其后才进入中间层', () => {
+    // 预算恰好容纳「中间层 10 条全部出局并付出一条占位」，故只出局中间层。
+    const entries = [...manyFacts(20), ...manyFacts(RECENT_KEEP + 1)]
+    const middle = entries.slice(HEAD_KEEP, entries.length - PROTECTED)
+    const budget = totalBytes(entries) - totalBytes(middle) + PLACEHOLDER_BYTES
+    const result = truncate(entries, budget)
+    assert.deepEqual(omittedCounts(result), [HEAD_KEEP])
+    assert.equal(result.filter(entry => entry.kind === 'tool-call').length, PROTECTED + HEAD_KEEP)
+    // 分界落在下标 9 与 10 之间：前 10 条保留，第 11 条起被折叠。
+    assert.equal(label(result[HEAD_KEEP - 1]!), 'tool-call:fact')
+    assert.equal(label(result[HEAD_KEEP]!), `omitted:${String(HEAD_KEEP)}`)
 })
 
 test('空历史返回空序列', () => {
@@ -398,9 +420,10 @@ test('单元左邻已剪时并入同一缺口，不重复计占位', () => {
 
 test('权威小条目分隔的两个小条目段各自独立出局与计费', () => {
     // 中间范围内非权威小段、权威小条目、非权威小段相邻；权威收段，两段各付一条占位。
+    // 首条用户指令加九条 fact 恰好填满头部 10 条，两段小条目因此都落在中间层。
     const entries = [
         user('user-instruction', 'task'),
-        ...manyFacts(10),
+        ...manyFacts(9),
         tinyCall('a'),
         tinyCall('b'),
         user('constraint', 'rule'),
@@ -418,10 +441,11 @@ test('权威小条目分隔的两个小条目段各自独立出局与计费', ()
 })
 
 test('跨头部与中间分界的连续小条目分属两段，各自按层出局', () => {
-    // 头部末尾与中间开头的小条目相邻，但分界收段：头部段钉住保留，中间段整段出局。
+    // 头部末尾（下标 9）与中间开头（下标 10）的小条目相邻，但分界收段：头部段钉住保留，中间段整段出局。
+    // 首条用户指令加八条 fact 加头部小条目恰好填满头部 10 条。
     const entries = [
         user('user-instruction', 'task'),
-        ...manyFacts(9),
+        ...manyFacts(8),
         tinyCall('head'),
         tinyCall('mid-a'),
         tinyCall('mid-b'),
@@ -432,8 +456,8 @@ test('跨头部与中间分界的连续小条目分属两段，各自按层出�
     const result = truncate(entries, budget)
     assert.deepEqual(omittedCounts(result), [2])
     assert.equal(label(result[1]!), 'tool-call:fact')
-    assert.equal(label(result[10]!), 'tool-call:fact')
-    assert.equal(label(result[11]!), 'omitted:2')
+    assert.equal(label(result[9]!), 'tool-call:fact')
+    assert.equal(label(result[10]!), 'omitted:2')
 })
 
 test('头部权威分隔的两个小条目段各自独立出局', () => {
