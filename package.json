@@ -24,7 +24,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsdown",
     "test": "tsc -p tsconfig.test.build.json && node .test-dist/tests/index.test.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "all": "pnpm typecheck && pnpm test && pnpm build"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
