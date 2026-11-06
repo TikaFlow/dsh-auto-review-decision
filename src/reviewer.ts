@@ -12,7 +12,7 @@ import type { ReviewVerdict } from './questions.ts'
 import type { SystemOneResponse } from './systemone.ts'
 import { truncateHistory } from './history.ts'
 import { fallbackFactor, historyBytes, observe } from './budget.ts'
-import { fixedStateBytes } from './fixed-overhead.ts'
+import { serializeFixedState } from './fixed-overhead.ts'
 import { validateArgs } from './args-schema.ts'
 import { getReviewConfig } from './config.ts'
 import { decisionQuestions, judge } from './questions.ts'
@@ -106,27 +106,20 @@ async function review(
             parameters: snapshot.pending.schema.parameters,
         },
     }
-    const fixedBytes = fixedStateBytes({
+    const fixed = serializeFixedState({
         environment: { cwd: snapshot.cwd },
         policy: REVIEW_POLICY,
         pending,
         questions,
     })
-    const history = truncateHistory(projected, historyBytes(signature, config.values.contextTokens, fixedBytes))
-    const body = {
-        ...(config.values.model === '' ? {} : { model: config.values.model }),
-        state: {
-            environment: { cwd: snapshot.cwd },
-            policy: REVIEW_POLICY,
-            history,
-            pending,
-        },
-        questions,
-    }
+    const history = truncateHistory(projected, historyBytes(signature, config.values.contextTokens, fixed.bytes))
+    const state = `{"environment":${fixed.environment},"policy":${fixed.policy},"history":${history},"pending":${fixed.pending}}`
+    const model = config.values.model === '' ? '' : `,"model":${JSON.stringify(config.values.model)}`
+    const serialized = `{"state":${state},"questions":${fixed.questions}${model}}`
     const metrics = { bodyBytes: 0 }
     let response: SystemOneResponse
     try {
-        response = await postDecisionWithRetry(body, {
+        response = await postDecisionWithRetry(serialized, {
             baseURL: config.values.baseURL,
             fullURL: config.values.fullURL,
             authHeader: config.values.authHeader,
@@ -135,6 +128,7 @@ async function review(
             signal,
             fetchImpl: deps?.fetchImpl,
             metrics,
+            questions,
         })
     } catch (error: unknown) {
         // 端点已响应且拒绝（非 200/429）：真实字节密度高于预估，收窄下一次预算后原样抛出。

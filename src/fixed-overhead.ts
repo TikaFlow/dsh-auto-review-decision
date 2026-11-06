@@ -18,15 +18,40 @@ export interface FixedStateParts {
     readonly questions: Readonly<Record<string, unknown>>
 }
 
+/** 固定部分的一次序列化结果：字节数与请求体文本同源。 */
+export interface SerializedFixedState {
+    /** environment、policy、pending 与全部 questions 的字节数合计。 */
+    readonly bytes: number
+    /** `state.environment` 的 JSON 文本。 */
+    readonly environment: string
+    /** `state.policy` 的 JSON 文本。 */
+    readonly policy: string
+    /** `state.pending` 的 JSON 文本。 */
+    readonly pending: string
+    /** `questions` 的 JSON 文本。 */
+    readonly questions: string
+}
+
 /**
- * 固定开销的字节数：environment、policy、pending 与全部 questions。
+ * 序列化固定部分：每部分只序列化一次，字节数与请求体文本共用同一结果。
  *
+ * 字节口径与逐部分 `byteLength(JSON.stringify(...))` 求和一致。
  * @param parts - 与 history 并列的固定部分。
- * @returns 固定开销的字节数。
+ * @returns 各部分的 JSON 文本，以及按既有口径求得的固定开销字节数。
  */
-export function fixedStateBytes(parts: FixedStateParts): number {
-    return byteLength(JSON.stringify(parts.environment))
-        + byteLength(parts.policy)
-        + byteLength(JSON.stringify(parts.pending))
-        + byteLength(JSON.stringify(parts.questions))
+export function serializeFixedState(parts: FixedStateParts): SerializedFixedState {
+    const environment = JSON.stringify(parts.environment)
+    const policy = JSON.stringify(parts.policy)
+    const pending = JSON.stringify(parts.pending)
+    const questions = JSON.stringify(parts.questions)
+    return {
+        bytes: byteLength(environment)
+            + byteLength(policy)
+            + byteLength(pending)
+            + byteLength(questions),
+        environment,
+        policy,
+        pending,
+        questions,
+    }
 }

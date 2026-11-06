@@ -260,6 +260,15 @@ configTest('请求体携带环境、策略原文、问题表与待审调用，�
     assert.ok(!String(init.body).includes(API_KEY))
 })
 
+configTest('请求体与整体一次序列化逐字节一致，字段顺序不变', async () => {
+    const { session, exec } = makeReviewSession()
+    const { calls } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))
+    const raw = String(calls[0]!.init.body)
+    const body = JSON.parse(raw) as { state: unknown; questions: unknown; model: string }
+    assert.equal(raw, JSON.stringify({ state: body.state, questions: body.questions, model: body.model }))
+    assert.deepEqual(Object.keys(body), ['state', 'questions', 'model'])
+})
+
 configTest('history 依次携带用户指令、模型说明与历史调用，且不含工具 schema', async () => {
     const { session, exec } = makeReviewSession()
     const { calls } = await reviewOnce(session, exec, () => okResponse(answersWith(1)))

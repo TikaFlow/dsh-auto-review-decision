@@ -97,6 +97,8 @@ export interface DecisionCallOptions {
     readonly fetchImpl?: typeof fetch
     /** 观测出口：实际发送的请求体字节数在调用中回填。 */
     readonly metrics?: { bodyBytes: number }
+    /** 响应校验用的问题表；`request` 为已序列化文本时必填。 */
+    readonly questions?: SystemOneQuestions
 }
 
 /** 从非 200 的响应体里摘出简短摘要，不含响应原文。 */
@@ -242,7 +244,7 @@ interface AttemptContext {
 
 /** 发出一次请求并校验响应；失败即抛，429 以 RateLimitedError 标记。 */
 async function attemptDecision(
-    request: SystemOneRequest,
+    questions: SystemOneQuestions,
     options: DecisionCallOptions,
     ctx: AttemptContext,
     timeoutMs: number,
@@ -278,14 +280,14 @@ async function attemptDecision(
     }
     const payload = isRecord(parsed.result) ? parsed.result : parsed
     const result = payload as unknown as SystemOneResponse
-    validateDecisionResponse(request.questions, result)
+    validateDecisionResponse(questions, result)
     return result
 }
 
 /**
  * 发出一次决策请求并校验响应。不排队、不合并；HTTP 429 时退避重试至多 `retries` 次。
  * 首次尝试使用 {@link REVIEW_TIMEOUT_MS}，重试尝试使用 {@link RETRY_TIMEOUT_MS}。
- * 
+ *
  * @param request - 请求体；`model` 为空时不发送该字段。
  * @param options - 端点、模型、密钥、生命周期与注入点。
  * @param retries - 429 的重试次数；0 表示不重试（探活路径使用）。
@@ -293,7 +295,7 @@ async function attemptDecision(
  * @throws {SystemOneCallError} 凭据缺失、超时、中止、网络失败、非 200、解析失败、字段缺失或取值越界。
  */
 export async function postDecisionWithRetry(
-    request: SystemOneRequest,
+    request: SystemOneRequest | string,
     options: DecisionCallOptions,
     retries: number = 5,
 ): Promise<SystemOneResponse> {
@@ -301,11 +303,16 @@ export async function postDecisionWithRetry(
         updateState('configError')
         throw new SystemOneCallError(FAILURE.config, '凭据未配置')
     }
-    const body: Record<string, unknown> = { state: request.state, questions: request.questions }
-    const model = request.model || options.model
-    if (model) body.model = model
-    // 与实际发送体同源计量，避免调用方二次序列化产生偏差。
-    const serialized = JSON.stringify(body)
+    let serialized: string
+    if (typeof request === 'string') {
+        serialized = request
+    } else {
+        const body: Record<string, unknown> = { state: request.state, questions: request.questions }
+        const model = request.model || options.model
+        if (model) body.model = model
+        serialized = JSON.stringify(body)
+    }
+    const questions = typeof request === 'string' ? options.questions! : request.questions
     const bodyBytes = byteLength(serialized)
     if (options.metrics !== undefined) options.metrics.bodyBytes = bodyBytes
 
@@ -329,7 +336,7 @@ export async function postDecisionWithRetry(
         const startedAt = performance.now()
         try {
             const timeoutMs = attempt === 0 ? REVIEW_TIMEOUT_MS : RETRY_TIMEOUT_MS
-            const response = await attemptDecision(request, options, ctx, timeoutMs)
+            const response = await attemptDecision(questions, options, ctx, timeoutMs)
             const inputTokens = response.usage?.input_tokens
             updateState('succeeded', {
                 bodyBytes,

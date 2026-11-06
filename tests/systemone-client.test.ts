@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { byteLength } from '../src/shared/bytes.ts'
 import {
     postDecisionWithRetry,
     validateDecisionResponse,
@@ -78,6 +79,20 @@ test('端点、方法与请求头', async () => {
     assert.equal((calls[0]?.init.headers as Headers).get('Content-Type'), 'application/json')
     assert.equal((calls[0]?.init.headers as Headers).get('Authorization'), 'Bearer sk-test')
     assert.deepEqual(Object.keys(JSON.parse(String(calls[0]?.init.body))), ['state', 'questions', 'model'])
+})
+
+test('已序列化请求体原样发送，与对象路径逐字节一致', async () => {
+    const serialized = JSON.stringify({ state: { cwd: '/p' }, questions: QUESTIONS, model: 'm' })
+    const objectMetrics = { bodyBytes: 0 }
+    const stringMetrics = { bodyBytes: 0 }
+    const ok = () => Promise.resolve(new Response(JSON.stringify(OK_BODY), { status: 200 }))
+    calls.length = 0
+    await postDecisionWithRetry(request(), { ...BASE, metrics: objectMetrics, fetchImpl: spy(ok) })
+    await postDecisionWithRetry(serialized, { ...BASE, metrics: stringMetrics, questions: QUESTIONS, fetchImpl: spy(ok) })
+    assert.equal(String(calls[0]?.init.body), serialized)
+    assert.equal(String(calls[1]?.init.body), serialized)
+    assert.equal(objectMetrics.bodyBytes, stringMetrics.bodyBytes)
+    assert.equal(stringMetrics.bodyBytes, byteLength(serialized))
 })
 
 test('基址尾部斜杠不产生重复斜杠', async () => {

@@ -33,14 +33,15 @@ type Candidate = number | PinUnit
  * 被裁掉的连续段在原位置折叠成一条占位说明
  * @param entries - 会话顺序排列的保留条目，最后一条是待审调用。
  * @param budgetBytes - 本次允许的字节上限
- * @returns 裁剪后的条目序列，缺口处为 `omitted` 占位。
+ * @returns 裁剪后的序列化结果的 JSON 文本。
  */
-export function truncateHistory(entries: readonly HistoricalEntry[], budgetBytes: number): HistoricalEntry[] {
+export function truncateHistory(entries: readonly HistoricalEntry[], budgetBytes: number): string {
     const n = entries.length
     // 末十条与待审无条件保留
     const lastStart = Math.max(0, n - 1 - RECENT_KEEP)
     const firstEnd = Math.min(HEAD_KEEP, n - 2)
     const sizes: (number | undefined)[] = new Array<number | undefined>(n)
+    const serialized: (string | undefined)[] = new Array<string | undefined>(n)
     // 三层出局顺序：中间非权威、中间权威、头部非权威；层内从旧到新。
     let total = 0
     const tiers: Candidate[][] = [[], [], []]
@@ -92,7 +93,9 @@ export function truncateHistory(entries: readonly HistoricalEntry[], budgetBytes
             endPin(index)
             continue
         }
-        const size = byteLength(JSON.stringify(entry))
+        const text = JSON.stringify(entry)
+        const size = byteLength(text)
+        serialized[index] = text
         sizes[index] = size
         total += size
         const authority = AUTHORITY_ROLES.has(entry.role)
@@ -136,16 +139,17 @@ export function truncateHistory(entries: readonly HistoricalEntry[], budgetBytes
     }
 
     // 剪裁
-    const result: HistoricalEntry[] = []
+    const parts: string[] = []
     let omitted = 0
     const flush = (): void => {
         if (omitted === 0) return
-        result.push({
+        const entry: HistoricalEntry = {
             kind: 'omitted',
             role: 'fact',
             count: omitted,
             text: `${String(omitted)} history item(s) omitted at this point; their content is unavailable.`,
-        })
+        }
+        parts.push(JSON.stringify(entry))
         omitted = 0
     }
     for (const [index, entry] of entries.entries()) {
@@ -155,9 +159,9 @@ export function truncateHistory(entries: readonly HistoricalEntry[], budgetBytes
             continue
         }
         flush()
-        result.push(entry)
+        parts.push(serialized[index] as string)
     }
     flush()
 
-    return result
+    return `[${parts.join(',')}]`
 }
