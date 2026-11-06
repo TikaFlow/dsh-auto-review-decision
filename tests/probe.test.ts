@@ -10,6 +10,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
+import { budgetState, historyBytes, observe, resetBudget } from '../src/budget.ts'
 import { installProbeRoute } from '../src/probe.ts'
 import { CLIENT_TIMEOUT_MS, MAX_CONTEXT_TOKENS, MIN_CONTEXT_TOKENS, PROBE_TIMEOUT_MS, TEST_ROUTE } from '../src/shared/config.ts'
 
@@ -244,6 +245,58 @@ test('超大 contextTokens 不抛异常，回可读错误', async () => {
 
 test('客户端等待窗口等于探活两次尝试的 15 秒', () => {
     assert.equal(CLIENT_TIMEOUT_MS, PROBE_TIMEOUT_MS * 2)
+})
+
+/** 与探活路径一致的观测签名：端点与模型标识的组合。 */
+const PROBE_SIGNATURE = `${PAYLOAD.baseURL}|${String(PAYLOAD.fullURL)}|${PAYLOAD.model}`
+
+/** 把账本校准到 4 字节/token，作为探活前后的对照。 */
+function seedBudget(): void {
+    resetBudget()
+    observe(PROBE_SIGNATURE, 4000, 1000)
+}
+
+test('双发成功全程不改动同签名的账本，也不影响随后的审查取值', async () => {
+    seedBudget()
+    const before = budgetState()
+    const historyBefore = historyBytes(PROBE_SIGNATURE, PAYLOAD.contextTokens, 1000)
+
+    // 两次决策请求发出时各取一次账本快照，确认探活中途也未重置或回灌。
+    const snapshots: Array<ReturnType<typeof budgetState>> = []
+    const { result, calls } = await fire([
+        () => {
+            snapshots.push(budgetState())
+            return ok(4000)
+        },
+        () => {
+            snapshots.push(budgetState())
+            return ok(1)
+        },
+    ])
+
+    assert.ok(isPassed(result))
+    assert.equal(calls.length, 2)
+    assert.deepEqual(snapshots, [before, before])
+    assert.deepEqual(budgetState(), before)
+    assert.equal(historyBytes(PROBE_SIGNATURE, PAYLOAD.contextTokens, 1000), historyBefore)
+})
+
+test('双发首发不回 usage 时账本保持原样', async () => {
+    seedBudget()
+    const before = budgetState()
+    const { result, calls } = await fire([() => okWithoutUsage()])
+    assert.deepEqual(result, { ok: true })
+    assert.equal(calls.length, 1)
+    assert.deepEqual(budgetState(), before)
+})
+
+test('双发首发失败时账本保持原样', async () => {
+    seedBudget()
+    const before = budgetState()
+    const { result, calls } = await fire([() => stub(429, '{"error":{"message":"rate limited"}}')])
+    assert.ok(isFailed(result))
+    assert.equal(calls.length, 1)
+    assert.deepEqual(budgetState(), before)
 })
 
 /** 失败结果的最小形状。 */

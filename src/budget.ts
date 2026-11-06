@@ -53,22 +53,6 @@ function ledgerFor(signature: string): Ledger {
     return ledger
 }
 
-/** 由上下文窗口算出整个请求的硬上限（token）：上下文减压线余量。 */
-function hardStateTokens(contextTokens: number): number {
-    const margin = Math.max(contextTokens * CONTEXT_MARGIN_RATIO, MIN_CONTEXT_MARGIN_TOKENS)
-    return contextTokens - margin
-}
-
-/**
- * 本次剪裁允许的最大字节数。
- * @param signature - 决策端点与模型标识的组合，变化即重置。
- * @param contextTokens - 决策模型上下文窗口（token）。
- * @returns `HARD_STATE_TOKENS * factor`，向下取整。
- */
-export function maxBytes(signature: string, contextTokens: number): number {
-    return Math.floor(hardStateTokens(contextTokens) * ledgerFor(signature).factor)
-}
-
 /**
  * 本次留给可裁剪历史的字节数：整份内容的字节上限扣掉固定开销。
  *
@@ -77,8 +61,9 @@ export function maxBytes(signature: string, contextTokens: number): number {
  * @param fixedBytes - 固定开销的字节数。
  * @returns 可给历史的字节数；固定开销已超上限时为 0。
  */
-export function historyBytes(signature: string, contextTokens: number, fixedBytes: number): number {
-    const limit = maxBytes(signature, contextTokens)
+export function historyBytes(signature: string, contextTokens: number, fixedBytes: number, factor?: number): number {
+    const margin = Math.max(contextTokens * CONTEXT_MARGIN_RATIO, MIN_CONTEXT_MARGIN_TOKENS)
+    const limit = Math.floor((contextTokens - margin) * (factor || ledgerFor(signature).factor))
     const overhead = Number.isFinite(fixedBytes) && fixedBytes > 0 ? fixedBytes : 0
     return Math.max(0, limit - overhead)
 }
@@ -136,9 +121,4 @@ export function budgetState(): {
         totalTokens: ledger.totalTokens,
         factor: ledger.factor,
     }
-}
-
-/** 把账本整体还原到快照形态。 */
-export function restoreBudget(state: ReturnType<typeof budgetState>): void {
-    ledger = state === undefined ? undefined : { ...state }
 }

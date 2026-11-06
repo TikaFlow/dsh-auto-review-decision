@@ -20,7 +20,7 @@ import {
 } from './shared/config.ts'
 import { byteLength } from './shared/bytes.ts'
 import { isRecord } from './shared/tools.ts'
-import { budgetState, historyBytes, observe, resetBudget, restoreBudget } from './budget.ts'
+import { historyBytes } from './budget.ts'
 import { FAILURE, postDecisionWithRetry, SystemOneCallError } from './systemone-client.ts'
 import type { SystemOneRequest } from './systemone.ts'
 
@@ -169,25 +169,23 @@ function fixedBytesOf(call: ProbeCall): number {
 
 /** 双发测试。 */
 async function doubleProbe(contextTokens: number, call: ProbeCall, signal: AbortSignal): Promise<ProbeResult> {
-    // 与正式审查路径同源的观测签名：端点与模型标识的组合。
-    const signature = `${call.baseURL}|${String(call.fullURL)}|${call.model}`
     const fixed = fixedBytesOf(call)
-    const stash = budgetState()
-    resetBudget()
-    try {
-        const first = await singleProbe(call, signal, paddedRequest(historyBytes(signature, contextTokens, fixed)))
-        if (first.ok === false) return first
+    let factor = 2.5
+    const first = await singleProbe(call, signal, paddedRequest(historyBytes('', contextTokens, fixed, factor)))
+    if (first.ok === false) return first
 
-        const inputTokens = first.inputTokens
-        if (inputTokens === undefined || !Number.isFinite(inputTokens)) return { ok: true }
+    const bodyBytes = first.bodyBytes ?? 0
+    const inputTokens = first.inputTokens
+    if (inputTokens === undefined
+        || !Number.isFinite(inputTokens)
+        || !Number.isFinite(bodyBytes)
+        || bodyBytes <= 0
+        || inputTokens <= 0) return { ok: true }
 
-        observe(signature, first.bodyBytes ?? 0, inputTokens)
-        const second = await singleProbe(call, signal, paddedRequest(historyBytes(signature, contextTokens, fixed)), doubleFailureOf)
-        if (second.ok === false) return second
-        return { ok: true }
-    } finally {
-        restoreBudget(stash)
-    }
+    factor = bodyBytes / inputTokens
+    const second = await singleProbe(call, signal, paddedRequest(historyBytes('', contextTokens, fixed, factor)), doubleFailureOf)
+    if (second.ok === false) return second
+    return { ok: true }
 }
 
 /**

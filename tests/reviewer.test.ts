@@ -13,7 +13,7 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { FALLBACK_FAILURE_THRESHOLD } from '../src/shared/config.ts'
 import { CREDENTIAL_REF, MIN_CONTEXT_TOKENS } from '../src/shared/config.ts'
 import { byteLength } from '../src/shared/bytes.ts'
-import { budgetState, maxBytes, resetBudget } from '../src/budget.ts'
+import { budgetState, historyBytes, resetBudget } from '../src/budget.ts'
 import { setConfigInput } from '../src/config.ts'
 import { decide } from '../src/reviewer.ts'
 import { FAILURE, SystemOneCallError } from '../src/systemone-client.ts'
@@ -670,7 +670,7 @@ configTest('非 200/429 响应每次失败后回退因子，下一次审查预�
         assert.equal(budgetState()?.factor, expected)
     }
     const hardTokens = BUDGET_CONTEXT_TOKENS - Math.max(BUDGET_CONTEXT_TOKENS * 0.05, 1024)
-    assert.equal(maxBytes(BUDGET_SIGNATURE, BUDGET_CONTEXT_TOKENS), Math.floor(hardTokens * 2))
+    assert.equal(historyBytes(BUDGET_SIGNATURE, BUDGET_CONTEXT_TOKENS, 0), Math.floor(hardTokens * 2))
 })
 
 configTest('端点拒绝逐次计入因子回退，因子到下限后仍计；429 不计', async () => {

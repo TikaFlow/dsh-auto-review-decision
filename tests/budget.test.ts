@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { budgetState, fallbackFactor, historyBytes, maxBytes, observe, resetBudget } from '../src/budget.ts'
+import { budgetState, fallbackFactor, historyBytes, observe, resetBudget } from '../src/budget.ts'
+
+/** 上限即固定开销为 0 时的历史额度；`maxBytes` 已从实现移除，测试沿用同一算式。 */
+function maxBytes(signature: string, contextTokens: number): number {
+    return historyBytes(signature, contextTokens, 0)
+}
 
 /** 与 budget.ts 内部常量一致的测试基准值：上下文 24K，余量取 5% 与 1K 的较大者。 */
 const CONTEXT_TOKENS = 24 * 1024
